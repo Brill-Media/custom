@@ -1,0 +1,5 @@
+{
+  "rewrites": [
+    { "source": "/marketing-dashboard/:path*", "destination": "https://claude-alpha-blush.vercel.app/:path*" }
+  ]
+}
