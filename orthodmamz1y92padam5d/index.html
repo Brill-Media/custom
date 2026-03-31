@@ -1,0 +1,1443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ortho Data Manager</title>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --primary: #2563eb;
+    --primary-dark: #1d4ed8;
+    --success: #16a34a;
+    --danger: #dc2626;
+    --warning: #f59e0b;
+    --bg: #f8fafc;
+    --card: #ffffff;
+    --border: #e2e8f0;
+    --text: #1e293b;
+    --text-light: #64748b;
+    --header-bg: #1e293b;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); }
+
+  /* Header */
+  .header { background: var(--header-bg); color: white; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+  .header h1 { font-size: 20px; font-weight: 600; }
+  .header-actions { display: flex; gap: 10px; }
+
+  /* Tabs */
+  .tabs { display: flex; background: white; border-bottom: 2px solid var(--border); padding: 0 24px; position: sticky; top: 56px; z-index: 99; }
+  .tab { padding: 12px 24px; cursor: pointer; font-weight: 500; color: var(--text-light); border-bottom: 3px solid transparent; transition: all 0.2s; }
+  .tab:hover { color: var(--primary); }
+  .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+
+  /* Buttons */
+  .btn { padding: 8px 16px; border: none; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all 0.15s; }
+  .btn-primary { background: var(--primary); color: white; }
+  .btn-primary:hover { background: var(--primary-dark); }
+  .btn-success { background: var(--success); color: white; }
+  .btn-success:hover { background: #15803d; }
+  .btn-danger { background: var(--danger); color: white; }
+  .btn-danger:hover { background: #b91c1c; }
+  .btn-outline { background: white; color: var(--text); border: 1px solid var(--border); }
+  .btn-outline:hover { background: #f1f5f9; }
+  .btn-sm { padding: 4px 10px; font-size: 12px; }
+
+  /* Content */
+  .content { padding: 20px 24px; }
+  .section { display: none; }
+  .section.active { display: block; }
+
+  /* Toolbar */
+  .toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
+  .toolbar-left { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .filter-group { display: flex; align-items: center; gap: 6px; }
+  .filter-group label { font-size: 13px; color: var(--text-light); font-weight: 500; }
+  select, input[type="text"], input[type="number"] {
+    padding: 7px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; background: white; color: var(--text);
+  }
+  select:focus, input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+
+  /* Table */
+  .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; background: white; max-height: calc(100vh - 260px); overflow-y: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead { position: sticky; top: 0; z-index: 10; }
+  th { background: #f1f5f9; padding: 10px 12px; text-align: left; font-weight: 600; color: var(--text-light); border-bottom: 2px solid var(--border); white-space: nowrap; }
+  td { padding: 8px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  tr:hover td { background: #f8fafc; }
+  td.editable { cursor: pointer; }
+  td.editable:hover { background: #eff6ff; outline: 2px solid var(--primary); outline-offset: -2px; border-radius: 2px; }
+  td input, td select { width: 100%; padding: 4px 6px; border: 2px solid var(--primary); border-radius: 4px; font-size: 13px; background: #eff6ff; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .row-actions { display: flex; gap: 4px; }
+
+  /* Pivot table */
+  .pivot-table th { background: var(--header-bg); color: white; cursor: pointer; user-select: none; }
+  .pivot-table th:hover { background: #334155; }
+  .pivot-table th.sort-asc::after { content: ' ▲'; font-size: 10px; }
+  .pivot-table th.sort-desc::after { content: ' ▼'; font-size: 10px; }
+  .pivot-table .grand-total td { background: #1e293b; color: #ffffff; font-weight: 700; border-top: 2px solid #1e293b; }
+  .pivot-table .grand-total td.pct { color: #93c5fd; }
+  .pivot-table .grand-total td.cost { color: #ffffff; }
+  .pivot-table .pct { color: var(--primary); }
+  .pivot-table .cost { color: #000000; }
+
+  /* Modal */
+  .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 200; align-items: center; justify-content: center; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: white; border-radius: 12px; padding: 24px; width: 680px; max-width: 95vw; max-height: 90vh; overflow-y: auto; }
+  .modal h2 { font-size: 18px; margin-bottom: 20px; }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .form-group { display: flex; flex-direction: column; gap: 4px; }
+  .form-group label { font-size: 12px; font-weight: 600; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.5px; }
+  .form-group input, .form-group select { padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; }
+  .form-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); }
+
+  /* Stats cards */
+  .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 20px; }
+  .stat-card { background: white; border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+  .stat-card .label { font-size: 12px; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+  .stat-card .value { font-size: 24px; font-weight: 700; margin-top: 4px; }
+
+  /* Toast */
+  .toast { position: fixed; bottom: 24px; right: 24px; padding: 12px 20px; background: var(--header-bg); color: white; border-radius: 8px; font-size: 14px; z-index: 300; display: none; animation: slideUp 0.3s ease; }
+  .toast.show { display: block; }
+  @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+  .badge-urban { background: #dbeafe; color: #1d4ed8; }
+  .badge-suburban { background: #dcfce7; color: #15803d; }
+
+  .empty-state { text-align: center; padding: 60px 20px; color: var(--text-light); }
+  .empty-state h3 { margin-bottom: 8px; }
+  .search-input { min-width: 200px; }
+
+  /* Executive Summary */
+  .exec-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
+  .exec-title { font-size: 22px; font-weight: 700; color: var(--text); }
+  .exec-subtitle { font-size: 13px; color: var(--text-light); margin-top: 2px; }
+  .exec-period { background: var(--header-bg); color: white; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 600; }
+
+  .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 20px; }
+  .kpi-card { background: white; border: 1px solid var(--border); border-radius: 10px; padding: 16px; position: relative; overflow: hidden; }
+  .kpi-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; }
+  .kpi-card.blue::before { background: #2563eb; }
+  .kpi-card.green::before { background: #16a34a; }
+  .kpi-card.orange::before { background: #f59e0b; }
+  .kpi-card.purple::before { background: #7c3aed; }
+  .kpi-card.red::before { background: #dc2626; }
+  .kpi-card.teal::before { background: #0891b2; }
+  .kpi-label { font-size: 11px; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+  .kpi-value { font-size: 26px; font-weight: 800; margin: 6px 0 2px; color: var(--text); }
+  .kpi-sub { font-size: 11px; color: var(--text-light); }
+
+  .chart-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  .chart-grid-1 { margin-bottom: 16px; }
+  .chart-card { background: white; border: 1px solid var(--border); border-radius: 10px; padding: 18px; }
+  .chart-title { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.4px; }
+
+  .insights-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin-bottom: 20px; }
+  .insight-card { background: white; border: 1px solid var(--border); border-radius: 10px; padding: 16px; border-left: 4px solid; }
+  .insight-card.good { border-left-color: #16a34a; }
+  .insight-card.warn { border-left-color: #f59e0b; }
+  .insight-card.bad { border-left-color: #dc2626; }
+  .insight-card.info { border-left-color: #2563eb; }
+  .insight-icon { font-size: 18px; margin-bottom: 6px; }
+  .insight-title { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+  .insight-body { font-size: 12px; color: var(--text-light); line-height: 1.5; }
+
+  @media (max-width: 768px) { .chart-grid-2 { grid-template-columns: 1fr; } }
+
+  /* Notes section */
+  .notes-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+  .notes-card { background: white; border: 1px solid var(--border); border-radius: 10px; padding: 18px; display: flex; flex-direction: column; }
+  .notes-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .notes-title { font-size: 13px; font-weight: 700; color: var(--text); text-transform: uppercase; letter-spacing: 0.4px; }
+  .rte-toolbar { display: flex; gap: 2px; padding: 4px 6px; background: #f8fafc; border: 1px solid var(--border); border-bottom: none; border-radius: 6px 6px 0 0; flex-wrap: wrap; }
+  .rte-btn { background: none; border: none; cursor: pointer; padding: 4px 7px; border-radius: 4px; font-size: 13px; color: var(--text); line-height: 1; }
+  .rte-btn:hover { background: #e2e8f0; }
+  .rte-btn.active { background: #dbeafe; color: var(--primary); }
+  .rte-sep { width: 1px; background: var(--border); margin: 2px 4px; }
+  .rte-body { flex: 1; min-height: 180px; border: 1px solid var(--border); border-radius: 0 0 6px 6px; padding: 12px; font-size: 13px; font-family: inherit; color: var(--text); line-height: 1.7; outline: none; overflow-y: auto; }
+  .rte-body:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+  .rte-body ul { padding-left: 20px; list-style: disc; }
+  .rte-body ol { padding-left: 20px; list-style: decimal; }
+  .rte-body b, .rte-body strong { font-weight: 700; }
+  .rte-body i, .rte-body em { font-style: italic; }
+  .rte-body u { text-decoration: underline; }
+  .rte-body h3 { font-size: 14px; font-weight: 700; margin: 6px 0 2px; }
+  [data-placeholder]:empty::before { content: attr(data-placeholder); color: #94a3b8; pointer-events: none; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>&#9881; Ortho Data Manager</h1>
+  <div class="header-actions">
+    <label class="btn btn-outline" style="cursor:pointer">
+      &#128194; Import Excel
+      <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none">
+    </label>
+    <button class="btn btn-success" onclick="exportToExcel()">&#128190; Export to Excel</button>
+  </div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" data-tab="exec">Executive Summary</div>
+  <div class="tab" data-tab="raw">Raw Data</div>
+  <div class="tab" data-tab="pivot">Pivot Summary</div>
+  <div class="tab" data-tab="accounts">Account Profiles</div>
+</div>
+
+<div class="content">
+  <!-- EXECUTIVE SUMMARY TAB -->
+  <div id="exec" class="section active">
+    <div class="exec-header">
+      <div>
+        <h2 class="exec-title">Portfolio Performance Summary</h2>
+        <div class="exec-subtitle" id="execSubtitle"></div>
+      </div>
+      <div class="exec-period" id="execPeriod"></div>
+    </div>
+
+    <!-- KPI Cards -->
+    <div class="kpi-grid" id="kpiGrid"></div>
+
+    <!-- Charts row 1 -->
+    <div class="chart-grid-2">
+      <div class="chart-card">
+        <div class="chart-title">Funnel Overview</div>
+        <canvas id="funnelChart" height="220"></canvas>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Google vs Meta — Start Rate</div>
+        <div id="channelCompare"></div>
+      </div>
+    </div>
+
+    <!-- Charts row 2 -->
+    <div class="chart-grid-1">
+      <div class="chart-card">
+        <div class="chart-title">Starts by Account — % of Total &amp; Cost per Start</div>
+        <canvas id="acctStartsChart" height="160"></canvas>
+      </div>
+    </div>
+
+    <!-- Charts row 3 -->
+    <div class="chart-grid-1">
+      <div class="chart-card">
+        <div class="chart-title">Monthly Trends — Leads, Appts & Starts</div>
+        <canvas id="trendChart" height="185"></canvas>
+      </div>
+    </div>
+
+    <!-- Insights -->
+    <div class="insights-grid" id="insightsGrid"></div>
+
+    <!-- Notes + Action Items -->
+    <div class="notes-grid">
+      <div class="notes-card">
+        <div class="notes-header">
+          <span class="notes-title">📝 Notes</span>
+          <button class="btn btn-outline btn-sm" onclick="saveNotes()">Save</button>
+        </div>
+        <div class="rte-toolbar" id="rteToolbar1">
+          <button class="rte-btn" onclick="rte('bold')" title="Bold"><b>B</b></button>
+          <button class="rte-btn" onclick="rte('italic')" title="Italic"><i>I</i></button>
+          <button class="rte-btn" onclick="rte('underline')" title="Underline"><u>U</u></button>
+          <div class="rte-sep"></div>
+          <button class="rte-btn" onclick="rte('insertUnorderedList')" title="Bullet list">&#8226; List</button>
+          <button class="rte-btn" onclick="rte('insertOrderedList')" title="Numbered list">1. List</button>
+          <div class="rte-sep"></div>
+          <button class="rte-btn" onclick="rte('formatBlock','h3')" title="Heading">H</button>
+          <button class="rte-btn" onclick="rte('formatBlock','p')" title="Paragraph">¶</button>
+          <div class="rte-sep"></div>
+          <button class="rte-btn" onclick="rte('removeFormat')" title="Clear formatting">✕</button>
+        </div>
+        <div id="execNotes" class="rte-body" contenteditable="true" data-placeholder="Add notes here..."></div>
+      </div>
+      <div class="notes-card">
+        <div class="notes-header">
+          <span class="notes-title">✅ Next Steps / Action Items</span>
+          <button class="btn btn-outline btn-sm" onclick="saveNotes()">Save</button>
+        </div>
+        <div class="rte-toolbar" id="rteToolbar2">
+          <button class="rte-btn" onclick="rte('bold')" title="Bold"><b>B</b></button>
+          <button class="rte-btn" onclick="rte('italic')" title="Italic"><i>I</i></button>
+          <button class="rte-btn" onclick="rte('underline')" title="Underline"><u>U</u></button>
+          <div class="rte-sep"></div>
+          <button class="rte-btn" onclick="rte('insertUnorderedList')" title="Bullet list">&#8226; List</button>
+          <button class="rte-btn" onclick="rte('insertOrderedList')" title="Numbered list">1. List</button>
+          <div class="rte-sep"></div>
+          <button class="rte-btn" onclick="rte('formatBlock','h3')" title="Heading">H</button>
+          <button class="rte-btn" onclick="rte('formatBlock','p')" title="Paragraph">¶</button>
+          <div class="rte-sep"></div>
+          <button class="rte-btn" onclick="rte('removeFormat')" title="Clear formatting">✕</button>
+        </div>
+        <div id="execActions" class="rte-body" contenteditable="true" data-placeholder="Add action items here..."></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RAW DATA TAB -->
+  <div id="raw" class="section">
+    <div class="toolbar">
+      <div class="toolbar-left">
+        <button class="btn btn-primary" onclick="openAddModal()">+ Add Record</button>
+        <button class="btn btn-danger" onclick="deleteSelected()" id="deleteBtn" style="display:none">&#128465; Delete Selected</button>
+        <div class="filter-group">
+          <label>Account:</label>
+          <select id="filterAccount" onchange="renderRawTable()"><option value="">All</option></select>
+        </div>
+        <div class="filter-group">
+          <label>Month:</label>
+          <select id="filterMonth" onchange="renderRawTable()"><option value="">All</option></select>
+        </div>
+        <div class="filter-group">
+          <label>Source:</label>
+          <select id="filterSource" onchange="renderRawTable()"><option value="">All</option></select>
+        </div>
+      </div>
+      <div>
+        <input type="text" class="search-input" id="searchInput" placeholder="Search..." oninput="renderRawTable()">
+      </div>
+    </div>
+    <div class="table-wrap" id="rawTableWrap"></div>
+  </div>
+
+  <!-- PIVOT TAB -->
+  <div id="pivot" class="section">
+    <div class="stats-row" id="statsRow"></div>
+    <div class="toolbar">
+      <div class="toolbar-left">
+        <div class="filter-group">
+          <label>Group by:</label>
+          <select id="pivotGroup" onchange="renderPivot()">
+            <option value="account">Account</option>
+            <option value="month">Month</option>
+            <option value="source">Source</option>
+            <option value="location">Location</option>
+            <option value="setting">Urban/Suburban</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label>Month:</label>
+          <select id="pivotMonth" onchange="renderPivot()"><option value="">All</option></select>
+        </div>
+      </div>
+    </div>
+    <div class="table-wrap" id="pivotTableWrap"></div>
+  </div>
+
+  <!-- ACCOUNTS TAB -->
+  <div id="accounts" class="section">
+    <div class="toolbar">
+      <div class="toolbar-left">
+        <button class="btn btn-primary" onclick="openAccountModal()">+ Add Account</button>
+      </div>
+    </div>
+    <div class="table-wrap" id="accountsTableWrap"></div>
+  </div>
+</div>
+
+<!-- Add/Edit Record Modal -->
+<div class="modal-overlay" id="recordModal">
+  <div class="modal">
+    <h2 id="modalTitle">Add New Record</h2>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Month</label>
+        <select id="fMonth">
+          <option value="January">January</option><option value="February">February</option>
+          <option value="March">March</option><option value="April">April</option>
+          <option value="May">May</option><option value="June">June</option>
+          <option value="July">July</option><option value="August">August</option>
+          <option value="September">September</option><option value="October">October</option>
+          <option value="November">November</option><option value="December">December</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Account Name</label>
+        <select id="fAccount"><option value="">-- Select or type new --</option></select>
+      </div>
+      <div class="form-group">
+        <label>Ad Spend ($)</label>
+        <input type="number" id="fAdSpend" step="0.01">
+      </div>
+      <div class="form-group">
+        <label>Services Fees ($)</label>
+        <input type="number" id="fServicesFees" step="0.01">
+      </div>
+      <div class="form-group">
+        <label>Call Center Services ($)</label>
+        <input type="number" id="fCallCenter" step="0.01">
+      </div>
+      <div class="form-group">
+        <label>SEO Services ($)</label>
+        <input type="number" id="fSEO" step="0.01">
+      </div>
+      <div class="form-group">
+        <label>Location</label>
+        <input type="text" id="fLocation" placeholder="e.g. Brooklyn NY">
+      </div>
+      <div class="form-group">
+        <label>Urban / Suburban</label>
+        <select id="fUrban">
+          <option value="">--</option><option value="Urban">Urban</option><option value="Suburban">Suburban</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Town Size</label>
+        <select id="fTownSize">
+          <option value="">--</option><option value="Large">Large</option><option value="Big">Big</option>
+          <option value="Small to mid-sized">Small to mid-sized</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Cited Source</label>
+        <select id="fSource">
+          <option value="">--</option><option value="Google">Google</option><option value="Meta">Meta</option>
+          <option value="Organic">Organic</option><option value="Referrals">Referrals</option>
+          <option value="Programmatic Ad">Programmatic Ad</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Leads</label>
+        <input type="number" id="fLeads">
+      </div>
+      <div class="form-group">
+        <label>Contact Responded</label>
+        <input type="number" id="fContactResp">
+      </div>
+      <div class="form-group">
+        <label>Appointments Booked</label>
+        <input type="number" id="fApptBooked">
+      </div>
+      <div class="form-group">
+        <label>Appointments Show Up</label>
+        <input type="number" id="fApptShow">
+      </div>
+      <div class="form-group">
+        <label>New Customer</label>
+        <input type="number" id="fNewCust">
+      </div>
+      <div class="form-group">
+        <label>Starts</label>
+        <input type="number" id="fStartedTx">
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-outline" onclick="closeModal('recordModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveRecord()">Save Record</button>
+    </div>
+  </div>
+</div>
+
+<!-- Account Modal -->
+<div class="modal-overlay" id="accountModal">
+  <div class="modal">
+    <h2>Add New Account</h2>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Account Name</label>
+        <input type="text" id="aName" placeholder="e.g. Smith Orthodontics">
+      </div>
+      <div class="form-group">
+        <label>Location</label>
+        <input type="text" id="aLocation" placeholder="e.g. Brooklyn NY">
+      </div>
+      <div class="form-group">
+        <label>Urban / Suburban</label>
+        <select id="aUrban">
+          <option value="">--</option><option value="Urban">Urban</option><option value="Suburban">Suburban</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Town Size</label>
+        <select id="aTownSize">
+          <option value="">--</option><option value="Large">Large</option><option value="Big">Big</option>
+          <option value="Small to mid-sized">Small to mid-sized</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-outline" onclick="closeModal('accountModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveAccount()">Save Account</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ---- DATA STORE ----
+let rawData = [];
+let editingIdx = null;
+let pivotSort = { col: 'adSpend', dir: 'desc' };
+let selectedRows = new Set();
+let editingCell = null;
+
+function fmt(n) { return Math.round(n).toLocaleString(); }
+
+const FIELDS = ['Month','Account Name','Ad Spend','Services Fees','Call Center Services','SEO Services','Location','Urban / Suburban','Town Size','Cited Source','Leads','Contact Responded','Appointments Booked','Appointments Show Up','New Customer','Started Treatment'];
+const NUM_FIELDS = ['Ad Spend','Services Fees','Call Center Services','SEO Services','Leads','Contact Responded','Appointments Booked','Appointments Show Up','New Customer','Started Treatment'];
+
+// ---- INIT: Load embedded data from the original Excel ----
+function initData() {
+  rawData = INITIAL_DATA.map(r => ({...r}));
+  populateFilters();
+  renderExecSummary();
+  renderRawTable();
+  renderPivot();
+  renderAccounts();
+}
+
+// ---- TABS ----
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById(tab.dataset.tab).classList.add('active');
+    if (tab.dataset.tab === 'exec') renderExecSummary();
+    if (tab.dataset.tab === 'pivot') renderPivot();
+    if (tab.dataset.tab === 'accounts') renderAccounts();
+  });
+});
+
+// ---- FILTERS ----
+function populateFilters() {
+  const accounts = [...new Set(rawData.map(r => r['Account Name']))].filter(Boolean).sort();
+  const months = [...new Set(rawData.map(r => r['Month']))].filter(Boolean);
+  const sources = [...new Set(rawData.map(r => r['Cited Source']))].filter(Boolean).sort();
+
+  fillSelect('filterAccount', accounts);
+  fillSelect('filterMonth', months);
+  fillSelect('filterSource', sources);
+  fillSelect('pivotMonth', months);
+  fillAccountSelect(accounts);
+}
+
+function fillSelect(id, options) {
+  const sel = document.getElementById(id);
+  const val = sel.value;
+  sel.innerHTML = '<option value="">All</option>';
+  options.forEach(o => { const opt = document.createElement('option'); opt.value = o; opt.textContent = o; sel.appendChild(opt); });
+  sel.value = val;
+}
+
+function fillAccountSelect(accounts) {
+  const sel = document.getElementById('fAccount');
+  sel.innerHTML = '<option value="">-- Select --</option>';
+  accounts.forEach(a => { const opt = document.createElement('option'); opt.value = a; opt.textContent = a; sel.appendChild(opt); });
+  const custom = document.createElement('option'); custom.value = '__new__'; custom.textContent = '+ New Account...'; sel.appendChild(custom);
+}
+
+// ---- FILTERED DATA ----
+function getFiltered() {
+  let data = rawData;
+  const acc = document.getElementById('filterAccount').value;
+  const mon = document.getElementById('filterMonth').value;
+  const src = document.getElementById('filterSource').value;
+  const search = document.getElementById('searchInput').value.toLowerCase();
+  if (acc) data = data.filter(r => r['Account Name'] === acc);
+  if (mon) data = data.filter(r => r['Month'] === mon);
+  if (src) data = data.filter(r => r['Cited Source'] === src);
+  if (search) data = data.filter(r => Object.values(r).some(v => String(v).toLowerCase().includes(search)));
+  return data;
+}
+
+// ---- RAW TABLE ----
+function renderRawTable() {
+  const data = getFiltered();
+  const wrap = document.getElementById('rawTableWrap');
+
+  if (data.length === 0) {
+    wrap.innerHTML = '<div class="empty-state"><h3>No records found</h3><p>Try adjusting your filters or add a new record.</p></div>';
+    return;
+  }
+
+  const visibleFields = ['Month','Account Name','Ad Spend','Cited Source','Location','Urban / Suburban','Leads','Appointments Booked','Appointments Show Up','Starts'];
+  const fieldMap = {'Starts': 'Started Treatment'};
+  const dataKey = (f) => fieldMap[f] || f;
+
+  let html = '<table><thead><tr><th><input type="checkbox" onchange="toggleAll(this)"></th>';
+  visibleFields.forEach(f => html += `<th>${f}</th>`);
+  html += '<th>Actions</th></tr></thead><tbody>';
+
+  data.forEach((row, i) => {
+    const idx = rawData.indexOf(row);
+    const checked = selectedRows.has(idx) ? 'checked' : '';
+    html += `<tr data-idx="${idx}"><td><input type="checkbox" ${checked} onchange="toggleRow(${idx}, this)"></td>`;
+    visibleFields.forEach(f => {
+      const dk = dataKey(f);
+      const val = row[dk];
+      const display = val === null || val === undefined || val === '' ? '' : val;
+      const cls = NUM_FIELDS.includes(dk) ? 'num editable' : 'editable';
+      const formatted = NUM_FIELDS.includes(dk) && display !== '' && !isNaN(display)
+        ? (dk === 'Ad Spend' ? '$' + Number(display).toLocaleString() : Number(display).toLocaleString())
+        : display;
+      html += `<td class="${cls}" data-field="${dk}" data-idx="${idx}" onclick="startEdit(this)">${formatted}</td>`;
+    });
+    html += `<td class="row-actions">
+      <button class="btn btn-outline btn-sm" onclick="editRow(${idx})">&#9998;</button>
+      <button class="btn btn-danger btn-sm" onclick="deleteRow(${idx})">&#128465;</button>
+    </td></tr>`;
+  });
+
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+  document.getElementById('deleteBtn').style.display = selectedRows.size > 0 ? '' : 'none';
+}
+
+// ---- INLINE EDITING ----
+function startEdit(td) {
+  if (editingCell) commitEdit();
+  const field = td.dataset.field;
+  const idx = parseInt(td.dataset.idx);
+  const val = rawData[idx][field];
+  editingCell = { td, field, idx };
+
+  if (field === 'Month') {
+    const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    td.innerHTML = `<select onblur="commitEdit()" onchange="commitEdit()">${months.map(m => `<option ${m===val?'selected':''}>${m}</option>`).join('')}</select>`;
+    td.querySelector('select').focus();
+  } else if (field === 'Urban / Suburban') {
+    td.innerHTML = `<select onblur="commitEdit()" onchange="commitEdit()"><option value="">--</option><option ${val==='Urban'?'selected':''}>Urban</option><option ${val==='Suburban'?'selected':''}>Suburban</option></select>`;
+    td.querySelector('select').focus();
+  } else if (field === 'Cited Source') {
+    const sources = [...new Set(rawData.map(r => r['Cited Source']))].filter(Boolean).sort();
+    td.innerHTML = `<select onblur="commitEdit()" onchange="commitEdit()">${sources.map(s => `<option ${s===val?'selected':''}>${s}</option>`).join('')}</select>`;
+    td.querySelector('select').focus();
+  } else {
+    const inputType = NUM_FIELDS.includes(field) ? 'number' : 'text';
+    const displayVal = val === null || val === undefined ? '' : val;
+    td.innerHTML = `<input type="${inputType}" value="${displayVal}" onblur="commitEdit()" onkeydown="if(event.key==='Enter')commitEdit();if(event.key==='Escape'){editingCell=null;renderRawTable();}">`;
+    td.querySelector('input').focus();
+    td.querySelector('input').select();
+  }
+}
+
+function commitEdit() {
+  if (!editingCell) return;
+  const { td, field, idx } = editingCell;
+  const input = td.querySelector('input, select');
+  if (!input) { editingCell = null; return; }
+  let val = input.value;
+  if (NUM_FIELDS.includes(field)) {
+    val = val === '' ? null : Number(val);
+  }
+  rawData[idx][field] = val;
+  editingCell = null;
+  renderRawTable();
+  showToast('Cell updated');
+}
+
+// ---- ROW SELECTION ----
+function toggleRow(idx, cb) {
+  if (cb.checked) selectedRows.add(idx); else selectedRows.delete(idx);
+  document.getElementById('deleteBtn').style.display = selectedRows.size > 0 ? '' : 'none';
+}
+function toggleAll(cb) {
+  const data = getFiltered();
+  data.forEach(row => {
+    const idx = rawData.indexOf(row);
+    if (cb.checked) selectedRows.add(idx); else selectedRows.delete(idx);
+  });
+  renderRawTable();
+}
+function deleteSelected() {
+  if (!confirm(`Delete ${selectedRows.size} selected record(s)?`)) return;
+  const indices = [...selectedRows].sort((a, b) => b - a);
+  indices.forEach(i => rawData.splice(i, 1));
+  selectedRows.clear();
+  populateFilters();
+  renderRawTable();
+  showToast(`${indices.length} record(s) deleted`);
+}
+function deleteRow(idx) {
+  if (!confirm('Delete this record?')) return;
+  rawData.splice(idx, 1);
+  selectedRows.clear();
+  populateFilters();
+  renderRawTable();
+  showToast('Record deleted');
+}
+
+// ---- ADD/EDIT MODAL ----
+function openAddModal() {
+  editingIdx = null;
+  document.getElementById('modalTitle').textContent = 'Add New Record';
+  ['fMonth','fAdSpend','fServicesFees','fCallCenter','fSEO','fLocation','fUrban','fTownSize','fSource','fLeads','fContactResp','fApptBooked','fApptShow','fNewCust','fStartedTx'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el.tagName === 'SELECT') el.selectedIndex = 0; else el.value = '';
+  });
+  document.getElementById('fAccount').selectedIndex = 0;
+  document.getElementById('recordModal').classList.add('open');
+}
+
+function editRow(idx) {
+  editingIdx = idx;
+  const r = rawData[idx];
+  document.getElementById('modalTitle').textContent = 'Edit Record';
+  document.getElementById('fMonth').value = r['Month'] || '';
+  document.getElementById('fAccount').value = r['Account Name'] || '';
+  document.getElementById('fAdSpend').value = r['Ad Spend'] ?? '';
+  document.getElementById('fServicesFees').value = r['Services Fees'] ?? '';
+  document.getElementById('fCallCenter').value = r['Call Center Services'] ?? '';
+  document.getElementById('fSEO').value = r['SEO Services'] ?? '';
+  document.getElementById('fLocation').value = r['Location'] || '';
+  document.getElementById('fUrban').value = r['Urban / Suburban'] || '';
+  document.getElementById('fTownSize').value = r['Town Size'] || '';
+  document.getElementById('fSource').value = r['Cited Source'] || '';
+  document.getElementById('fLeads').value = r['Leads'] ?? '';
+  document.getElementById('fContactResp').value = r['Contact Responded'] ?? '';
+  document.getElementById('fApptBooked').value = r['Appointments Booked'] ?? '';
+  document.getElementById('fApptShow').value = r['Appointments Show Up'] ?? '';
+  document.getElementById('fNewCust').value = r['New Customer'] ?? '';
+  document.getElementById('fStartedTx').value = r['Started Treatment'] ?? '';
+  document.getElementById('recordModal').classList.add('open');
+}
+
+function saveRecord() {
+  const acctSel = document.getElementById('fAccount');
+  let acctName = acctSel.value;
+  if (acctName === '__new__') {
+    acctName = prompt('Enter new account name:');
+    if (!acctName) return;
+  }
+  if (!acctName) { alert('Please select an account.'); return; }
+
+  const numOrNull = (id) => { const v = document.getElementById(id).value; return v === '' ? null : Number(v); };
+
+  const record = {
+    'Month': document.getElementById('fMonth').value,
+    'Account Name': acctName,
+    'Ad Spend': numOrNull('fAdSpend'),
+    'Services Fees': numOrNull('fServicesFees'),
+    'Call Center Services': numOrNull('fCallCenter'),
+    'SEO Services': numOrNull('fSEO'),
+    'Location': document.getElementById('fLocation').value,
+    'Urban / Suburban': document.getElementById('fUrban').value,
+    'Town Size': document.getElementById('fTownSize').value,
+    'Cited Source': document.getElementById('fSource').value,
+    'Leads': numOrNull('fLeads'),
+    'Contact Responded': numOrNull('fContactResp'),
+    'Appointments Booked': numOrNull('fApptBooked'),
+    'Appointments Show Up': numOrNull('fApptShow'),
+    'New Customer': numOrNull('fNewCust'),
+    'Started Treatment': numOrNull('fStartedTx'),
+  };
+
+  // Auto-fill location info from existing account data
+  if (!record['Location'] || !record['Urban / Suburban'] || !record['Town Size']) {
+    const existing = rawData.find(r => r['Account Name'] === acctName && r['Location']);
+    if (existing) {
+      if (!record['Location']) record['Location'] = existing['Location'];
+      if (!record['Urban / Suburban']) record['Urban / Suburban'] = existing['Urban / Suburban'];
+      if (!record['Town Size']) record['Town Size'] = existing['Town Size'];
+    }
+  }
+
+  if (editingIdx !== null) {
+    rawData[editingIdx] = record;
+    showToast('Record updated');
+  } else {
+    rawData.push(record);
+    showToast('Record added');
+  }
+
+  closeModal('recordModal');
+  populateFilters();
+  renderRawTable();
+}
+
+function setPivotSort(col) {
+  if (pivotSort.col === col) {
+    pivotSort.dir = pivotSort.dir === 'desc' ? 'asc' : 'desc';
+  } else {
+    pivotSort.col = col;
+    pivotSort.dir = col === '_key' ? 'asc' : 'desc';
+  }
+  renderPivot();
+}
+
+// ---- NOTES ----
+function rte(cmd, val) {
+  document.execCommand(cmd, false, val || null);
+}
+function saveNotes() {
+  localStorage.setItem('ortho_notes', document.getElementById('execNotes').innerHTML);
+  localStorage.setItem('ortho_actions', document.getElementById('execActions').innerHTML);
+  showToast('Notes saved');
+}
+function loadNotes() {
+  const notes = localStorage.getItem('ortho_notes');
+  const actions = localStorage.getItem('ortho_actions');
+  if (notes) document.getElementById('execNotes').innerHTML = notes;
+  if (actions) document.getElementById('execActions').innerHTML = actions;
+}
+
+// ---- EXEC SUMMARY ----
+let execCharts = {};
+
+function renderExecSummary() {
+  const data = rawData.filter(r => r['Cited Source'] !== 'Programmatic Ad');
+  const months = [...new Set(rawData.map(r => r['Month']).filter(Boolean))];
+  const accounts = [...new Set(rawData.map(r => r['Account Name']).filter(Boolean))];
+
+  const sum = (arr, field) => arr.reduce((s, r) => s + (Number(r[field]) || 0), 0);
+
+  const totalSpend   = sum(rawData, 'Ad Spend');
+  const totalLeads   = sum(data, 'Leads');
+  const totalBooked  = sum(data, 'Appointments Booked');
+  const totalShow    = sum(data, 'Appointments Show Up');
+  const totalNewCust = sum(data, 'New Customer');
+  const totalStarts  = sum(data, 'Started Treatment');
+
+  const cpl      = totalLeads  ? (totalSpend / totalLeads).toLocaleString('en-US',{maximumFractionDigits:0}) : '—';
+  const cpStart  = totalStarts ? (totalSpend / totalStarts).toLocaleString('en-US',{maximumFractionDigits:0}) : '—';
+  const startRate = totalShow ? (totalStarts / totalShow * 100).toLocaleString('en-US',{maximumFractionDigits:0}) : '—';
+  const bookRate  = totalLeads  ? (totalBooked / totalLeads * 100).toLocaleString('en-US',{maximumFractionDigits:0}) : '—';
+
+  // Header
+  document.getElementById('execSubtitle').textContent = `${accounts.length} accounts · ${months.length} months`;
+  const monthOrder = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const sortedMonths = months.sort((a,b) => monthOrder.indexOf(a) - monthOrder.indexOf(b));
+  document.getElementById('execPeriod').textContent = sortedMonths.length > 1
+    ? `${sortedMonths[0]} – ${sortedMonths[sortedMonths.length-1]}`
+    : sortedMonths[0];
+
+  // KPI cards
+  document.getElementById('kpiGrid').innerHTML = [
+    { label: 'Total Ad Spend',    value: '$' + totalSpend.toLocaleString(),  sub: `across ${accounts.length} accounts`, color: 'blue' },
+    { label: 'Total Leads',       value: totalLeads.toLocaleString(),         sub: `$${cpl} cost per lead`,              color: 'teal' },
+    { label: 'Appts Booked',      value: totalBooked.toLocaleString(),        sub: `${bookRate}% of leads`,              color: 'purple' },
+    { label: 'Cost per Booking',  value: '$' + (totalBooked ? Math.round(totalSpend/totalBooked).toLocaleString() : '—'), sub: `ad spend ÷ appts booked`,  color: 'teal' },
+    { label: 'Cost per Show Up',  value: '$' + (totalShow ? Math.round(totalSpend/totalShow).toLocaleString()   : '—'), sub: `ad spend ÷ appts show up`, color: 'purple' },
+    { label: 'Cost per Start',    value: '$' + (totalStarts ? Math.round(totalSpend/totalStarts).toLocaleString() : '—'), sub: `ad spend ÷ starts`,         color: 'red' },
+    { label: 'Starts',            value: totalStarts.toLocaleString(),        sub: `${startRate}% of show-ups`,          color: 'green' },
+    { label: 'Cost per Start',    value: '$' + cpStart,                       sub: `total ad spend ÷ starts`,            color: 'red' },
+  ].map(k => `
+    <div class="kpi-card ${k.color}">
+      <div class="kpi-label">${k.label}</div>
+      <div class="kpi-value">${k.value}</div>
+      <div class="kpi-sub">${k.sub}</div>
+    </div>`).join('');
+
+  // Destroy old charts
+  Object.values(execCharts).forEach(c => c.destroy());
+  execCharts = {};
+
+  // ---- FUNNEL CHART ----
+  execCharts.funnel = new Chart(document.getElementById('funnelChart'), {
+    type: 'bar',
+    data: {
+      labels: ['Leads', 'Appts Booked', 'Appts Show Up', 'Starts'],
+      datasets: [{
+        data: [totalLeads, totalBooked, totalShow, totalStarts],
+        backgroundColor: ['#2563eb','#7c3aed','#0891b2','#f59e0b','#16a34a'],
+        borderRadius: 6,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ' ' + ctx.parsed.y.toLocaleString() } } },
+      scales: { y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { callback: v => v.toLocaleString() } }, x: { grid: { display: false } } }
+    }
+  });
+
+  // ---- GOOGLE vs META CHANNEL CHART ----
+  const goog = data.filter(r => r['Cited Source'] === 'Google');
+  const meta = data.filter(r => r['Cited Source'] === 'Meta');
+  const chanData = (arr) => {
+    const leads = sum(arr, 'Leads'), starts = sum(arr, 'Started Treatment'), newc = sum(arr, 'New Customer'), spend = sum(arr, 'Ad Spend'), show = sum(arr, 'Appointments Show Up');
+    return { leads, starts, newc, show, spend,
+      startRate: show ? +(starts/show*100).toFixed(0) : 0,
+      cpl: leads ? +(spend/leads).toFixed(0) : 0,
+      cpStart: starts ? +(spend/starts).toFixed(0) : 0,
+    };
+  };
+  const gd = chanData(goog), md = chanData(meta);
+  const maxRate = Math.max(gd.startRate, md.startRate) || 1;
+  document.getElementById('channelCompare').innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:20px;padding:10px 0;">
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">
+          <span style="font-weight:700;font-size:14px;color:#1e293b;">🔵 Google</span>
+          <span style="font-size:28px;font-weight:800;color:#4285f4;">${gd.startRate}%</span>
+        </div>
+        <div style="background:#f1f5f9;border-radius:999px;height:14px;overflow:hidden;">
+          <div style="height:100%;width:${(gd.startRate/maxRate*100).toFixed(1)}%;background:#4285f4;border-radius:999px;transition:width 0.5s;"></div>
+        </div>
+        <div style="font-size:11px;color:#64748b;margin-top:4px;">${gd.starts.toLocaleString()} starts · $${gd.cpStart.toLocaleString()} per start</div>
+      </div>
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">
+          <span style="font-weight:700;font-size:14px;color:#1e293b;">🔷 Meta</span>
+          <span style="font-size:28px;font-weight:800;color:#1877f2;">${md.startRate}%</span>
+        </div>
+        <div style="background:#f1f5f9;border-radius:999px;height:14px;overflow:hidden;">
+          <div style="height:100%;width:${(md.startRate/maxRate*100).toFixed(1)}%;background:#1877f2;border-radius:999px;transition:width 0.5s;"></div>
+        </div>
+        <div style="font-size:11px;color:#64748b;margin-top:4px;">${md.starts.toLocaleString()} starts · $${md.cpStart.toLocaleString()} per start</div>
+      </div>
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 14px;font-size:12px;color:#15803d;font-weight:600;">
+        Meta converts at ${md.startRate && gd.startRate ? (md.startRate/gd.startRate).toFixed(1) : '—'}x the rate of Google at nearly identical CPL
+      </div>
+    </div>`;
+
+  // ---- STARTS BY ACCOUNT ----
+  const byAcct = {};
+  data.forEach(r => {
+    const n = r['Account Name']; if (!n) return;
+    if (!byAcct[n]) byAcct[n] = { starts: 0, newCust: 0, spend: 0 };
+    byAcct[n].starts  += Number(r['Started Treatment']) || 0;
+    byAcct[n].newCust += Number(r['New Customer']) || 0;
+    byAcct[n].spend   += Number(r['Ad Spend']) || 0;
+  });
+  const acctsSorted = Object.entries(byAcct).sort((a,b) => b[1].starts - a[1].starts);
+  const totalStartsAll = acctsSorted.reduce((s,[,v]) => s + v.starts, 0);
+  const acctLabels     = acctsSorted.map(([k]) => k.replace(' Orthodontics','').replace(' Dental Care',''));
+  const acctStartsPct  = acctsSorted.map(([,v]) => totalStartsAll ? +((v.starts / totalStartsAll) * 100).toFixed(1) : 0);
+  const acctStartsAbs  = acctsSorted.map(([,v]) => v.starts);
+
+  const cpStartData = acctsSorted.map(([,v]) => v.starts ? +(v.spend/v.starts).toFixed(0) : null);
+  const avg = totalStarts ? totalSpend / totalStarts : 0;
+
+  execCharts.acctStarts = new Chart(document.getElementById('acctStartsChart'), {
+    type: 'bar',
+    data: {
+      labels: acctLabels,
+      datasets: [
+        {
+          label: '% of Total Starts',
+          data: acctStartsPct,
+          backgroundColor: '#16a34a',
+          borderRadius: 4,
+          yAxisID: 'y',
+          xAxisID: 'x1',
+          order: 2,
+        },
+        {
+          label: 'Cost per Start ($)',
+          data: cpStartData,
+          type: 'line',
+          borderColor: '#f59e0b',
+          backgroundColor: '#f59e0b',
+          pointBackgroundColor: cpStartData.map(v => !v ? '#e2e8f0' : v <= avg ? '#16a34a' : v <= avg * 1.5 ? '#f59e0b' : '#dc2626'),
+          pointRadius: 5,
+          pointHoverRadius: 7,
+          borderWidth: 2,
+          yAxisID: 'y2',
+          xAxisID: 'x2',
+          order: 1,
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true, indexAxis: 'y',
+      plugins: {
+        legend: { position: 'top' },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const i = ctx.dataIndex;
+              if (ctx.dataset.label === '% of Total Starts') {
+                const cp = cpStartData[i];
+                return [
+                  ` ${ctx.parsed.x}%  (${acctStartsAbs[i]} starts)`,
+                  cp ? ` Cost per Start: $${cp.toLocaleString()}` : ' Cost per Start: —'
+                ];
+              }
+              return [];
+            }
+          }
+        }
+      },
+      scales: {
+        y:  { grid: { display: false }, ticks: { font: { size: 11 } } },
+        y2: { display: false },
+        x1: { beginAtZero: true, max: 100, position: 'bottom', grid: { color: '#f1f5f9' }, ticks: { callback: v => v + '%' } },
+        x2: { beginAtZero: true, position: 'top', grid: { display: false }, ticks: { callback: v => '$' + v.toLocaleString() } },
+      }
+    }
+  });
+
+  // ---- MONTHLY TREND CHART ----
+  const byMonth = {};
+  sortedMonths.forEach(m => { byMonth[m] = { leads: 0, booked: 0, starts: 0 }; });
+  data.forEach(r => {
+    const m = r['Month']; if (!m || !byMonth[m]) return;
+    byMonth[m].leads   += Number(r['Leads']) || 0;
+    byMonth[m].booked  += Number(r['Appointments Booked']) || 0;
+    byMonth[m].starts  += Number(r['Started Treatment']) || 0;
+  });
+  const trendOpportunityPlugin = {
+    id: 'trendOpportunity',
+    afterDraw(chart) {
+      const ctx = chart.ctx;
+      const meta0 = chart.getDatasetMeta(0); // Leads
+      const meta1 = chart.getDatasetMeta(1); // Appts Booked
+      const pts0 = meta0.data;
+      const pts1 = meta1.data;
+      const n = pts0.length;
+      if (n < 2) return;
+
+      // 1. Soft shaded fill in the gap between Leads and Appts Booked
+      ctx.save();
+      ctx.beginPath();
+      pts0.forEach((pt, i) => i === 0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y));
+      for (let i = n - 1; i >= 0; i--) ctx.lineTo(pts1[i].x, pts1[i].y);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(59, 130, 246, 0.07)';
+      ctx.fill();
+      ctx.restore();
+
+      // 2. Pick anchor point ~60% across the chart
+      const idx = Math.max(0, Math.floor(n * 0.60));
+      const lx = pts0[idx].x, ly = pts0[idx].y;   // leads point
+      const bx = pts1[idx].x, by = pts1[idx].y;   // booked point
+      const midY = (ly + by) / 2;
+
+      // 3. Callout box — position to the right of the anchor point
+      const ca = chart.chartArea;
+      const bw = 210, bh = 68, br = 9;
+      let cbx = lx + 28;
+      const cby = midY - bh / 2;
+      if (cbx + bw > ca.right - 6) cbx = ca.right - bw - 6;
+
+      // Arrow heads helper
+      function arrowHead(x, y, fromX, fromY, color) {
+        const angle = Math.atan2(y - fromY, x - fromX);
+        const len = 7;
+        ctx.save();
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x - len * Math.cos(angle - 0.4), y - len * Math.sin(angle - 0.4));
+        ctx.lineTo(x - len * Math.cos(angle + 0.4), y - len * Math.sin(angle + 0.4));
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // Shadow
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.22)';
+      ctx.shadowBlur = 10;
+      ctx.shadowOffsetY = 3;
+      ctx.beginPath();
+      ctx.roundRect(cbx, cby, bw, bh, br);
+      ctx.fillStyle = '#0f172a';
+      ctx.fill();
+      ctx.restore();
+
+      // Border accent
+      ctx.save();
+      ctx.beginPath();
+      ctx.roundRect(cbx, cby, bw, bh, br);
+      ctx.strokeStyle = 'rgba(99,102,241,0.55)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.restore();
+
+      // Leader line → Leads
+      const leaderY0 = cby + 18;
+      ctx.save();
+      ctx.setLineDash([4, 3]);
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = 'rgba(59,130,246,0.7)';
+      ctx.beginPath();
+      ctx.moveTo(cbx, leaderY0);
+      ctx.lineTo(lx, ly);
+      ctx.stroke();
+      ctx.restore();
+      arrowHead(lx, ly, cbx, leaderY0, 'rgba(59,130,246,0.9)');
+
+      // Leader line → Appts Booked
+      const leaderY1 = cby + bh - 18;
+      ctx.save();
+      ctx.setLineDash([4, 3]);
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = 'rgba(124,58,237,0.7)';
+      ctx.beginPath();
+      ctx.moveTo(cbx, leaderY1);
+      ctx.lineTo(bx, by);
+      ctx.stroke();
+      ctx.restore();
+      arrowHead(bx, by, cbx, leaderY1, 'rgba(124,58,237,0.9)');
+
+      // Callout text
+      ctx.save();
+      ctx.fillStyle = '#fbbf24';
+      ctx.font = 'bold 10.5px -apple-system, system-ui, sans-serif';
+      ctx.fillText('📈  GROWTH OPPORTUNITY', cbx + 12, cby + 17);
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '10px -apple-system, system-ui, sans-serif';
+      ctx.fillStyle = '#cbd5e1';
+      ctx.fillText('Follow-up systems  ·  Retargeting', cbx + 12, cby + 34);
+      ctx.fillText('Social engagement', cbx + 12, cby + 50);
+      ctx.restore();
+    }
+  };
+
+  execCharts.trend = new Chart(document.getElementById('trendChart'), {
+    type: 'line',
+    data: {
+      labels: sortedMonths,
+      datasets: [
+        { label: 'Leads',         data: sortedMonths.map(m => byMonth[m].leads),   borderColor: '#2563eb', backgroundColor: '#eff6ff', fill: false, tension: 0.3, pointRadius: 5 },
+        { label: 'Appts Booked',  data: sortedMonths.map(m => byMonth[m].booked),  borderColor: '#7c3aed', backgroundColor: '#f5f3ff', fill: false, tension: 0.3, pointRadius: 5 },
+        { label: 'Starts',        data: sortedMonths.map(m => byMonth[m].starts),  borderColor: '#16a34a', backgroundColor: '#f0fdf4', fill: false, tension: 0.3, pointRadius: 5 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { position: 'top' } },
+      scales: { y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { callback: v => v.toLocaleString() } }, x: { grid: { display: false } } }
+    },
+    plugins: [trendOpportunityPlugin]
+  });
+
+  // ---- INSIGHTS ----
+  const metaStartRate = md.newc ? +(md.starts/md.newc*100).toFixed(0) : 0;
+  const googStartRate = gd.newc ? +(gd.starts/gd.newc*100).toFixed(0) : 0;
+  const noShowCount = totalBooked - totalShow;
+  const noShowPct = totalBooked ? +(noShowCount/totalBooked*100).toFixed(0) : 0;
+  const unbookedLeads = totalLeads - totalBooked;
+  const unbookedPct = totalLeads ? +(unbookedLeads/totalLeads*100).toFixed(0) : 0;
+  const bestAcct = acctsSorted[0];
+  const worstAcct = [...acctsSorted].sort((a,b) => {
+    const ar = a[1].newCust ? a[1].starts/a[1].newCust : 0;
+    const br = b[1].newCust ? b[1].starts/b[1].newCust : 0;
+    return ar - br;
+  })[0];
+
+  document.getElementById('insightsGrid').innerHTML = [
+    { type: 'bad',  icon: '⚠️', title: `${unbookedPct}% of leads never get booked`,
+      body: `${unbookedLeads.toLocaleString()} out of ${totalLeads.toLocaleString()} leads never converted to an appointment. Improving lead follow-up speed is the single highest-leverage opportunity in this portfolio.` },
+    { type: 'bad',  icon: '📅', title: `${noShowPct}% no-show rate on booked appointments`,
+      body: `${noShowCount.toLocaleString()} booked appointments didn't show up. Automated SMS/email reminders could recover a significant portion of this lost revenue.` },
+    { type: 'good', icon: '📱', title: `Meta converts at ${metaStartRate}% vs Google's ${googStartRate}%`,
+      body: `Meta leads start treatment at ${+(metaStartRate/Math.max(googStartRate,1)).toFixed(1)}x the rate of Google leads, at nearly identical CPL ($${md.cpl} vs $${gd.cpl}). Shifting budget toward Meta improves efficiency without increasing spend.` },
+    { type: 'warn', icon: '🏥', title: `${startRate}% of show-ups start treatment`,
+      body: `This points to a multi-month lag between appointment show up and new customer.` },
+    { type: 'good', icon: '🏆', title: `Top performer: ${bestAcct ? bestAcct[0] : '—'}`,
+      body: `${bestAcct ? bestAcct[0] : '—'} leads the portfolio with ${bestAcct ? bestAcct[1].starts : 0} starts. Their consultation process is a model worth replicating across other accounts.` },
+    { type: 'info', icon: '🌱', title: `Organic & referral channels are underutilised`,
+      body: `Organic leads book at 26% and start at 29% — matching Meta performance at zero cost. Referrals start at an even higher rate. SEO and referral programs deserve more investment.` },
+  ].map(i => `
+    <div class="insight-card ${i.type}">
+      <div class="insight-icon">${i.icon}</div>
+      <div class="insight-title">${i.title}</div>
+      <div class="insight-body">${i.body}</div>
+    </div>`).join('');
+
+  loadNotes();
+}
+
+// ---- PIVOT TABLE ----
+function renderPivot() {
+  let data = rawData;
+  const monthFilter = document.getElementById('pivotMonth').value;
+  if (monthFilter) data = data.filter(r => r['Month'] === monthFilter);
+
+  const groupBy = document.getElementById('pivotGroup').value;
+  const keyMap = { account: 'Account Name', month: 'Month', source: 'Cited Source', location: 'Location', setting: 'Urban / Suburban' };
+  const groupField = keyMap[groupBy];
+
+  // Stats
+  const totalSpend = data.reduce((s, r) => s + (r['Ad Spend'] || 0), 0);
+  const totalLeads = data.reduce((s, r) => s + (r['Leads'] || 0), 0);
+  const totalBooked = data.reduce((s, r) => s + (r['Appointments Booked'] || 0), 0);
+  const totalNewCust = data.reduce((s, r) => s + (r['New Customer'] || 0), 0);
+  const totalTx = data.reduce((s, r) => s + (r['Started Treatment'] || 0), 0);
+
+  document.getElementById('statsRow').innerHTML = `
+    <div class="stat-card"><div class="label">Total Ad Spend</div><div class="value">$${totalSpend.toLocaleString()}</div></div>
+    <div class="stat-card"><div class="label">Total Leads</div><div class="value">${totalLeads.toLocaleString()}</div></div>
+    <div class="stat-card"><div class="label">Appts Booked</div><div class="value">${totalBooked.toLocaleString()}</div></div>
+    <div class="stat-card"><div class="label">New Customers</div><div class="value">${totalNewCust.toLocaleString()}</div></div>
+    <div class="stat-card"><div class="label">Starts</div><div class="value">${totalTx.toLocaleString()}</div></div>
+    <div class="stat-card"><div class="label">Cost per Lead</div><div class="value">$${totalLeads ? (totalSpend / totalLeads).toLocaleString('en-US',{maximumFractionDigits:0}) : '—'}</div></div>
+  `;
+
+  // Group
+  const groups = {};
+  data.forEach(r => {
+    const key = r[groupField] || '(blank)';
+    if (!groups[key]) groups[key] = { adSpend: 0, leads: 0, booked: 0, showUp: 0, newCust: 0, startedTx: 0 };
+    groups[key].adSpend += r['Ad Spend'] || 0;
+    groups[key].leads += r['Leads'] || 0;
+    groups[key].booked += r['Appointments Booked'] || 0;
+    groups[key].showUp += r['Appointments Show Up'] || 0;
+    groups[key].newCust += r['New Customer'] || 0;
+    groups[key].startedTx += r['Started Treatment'] || 0;
+  });
+
+  // Compute derived values for sorting
+  const entries = Object.entries(groups).map(([key, g]) => {
+    g._key = key;
+    g._bookedPct = g.leads ? g.booked / g.leads : 0;
+    g._showPct = g.booked ? g.showUp / g.booked : 0;
+    g._startPct = g.showUp ? g.startedTx / g.showUp : 0;
+    g._cpLead = g.leads ? g.adSpend / g.leads : 0;
+    g._cpBooked = g.booked ? g.adSpend / g.booked : 0;
+    g._cpShow = g.showUp ? g.adSpend / g.showUp : 0;
+    g._cpStart = g.startedTx ? g.adSpend / g.startedTx : 0;
+    g._cpCust = g.newCust ? g.adSpend / g.newCust : 0;
+    return [key, g];
+  });
+
+  const colKeys = ['_key','adSpend','leads','booked','showUp','startedTx','_bookedPct','_showPct','_startPct','_cpLead','_cpBooked','_cpShow','_cpStart'];
+  const sorted = entries.sort((a, b) => {
+    const av = a[1][pivotSort.col] ?? 0;
+    const bv = b[1][pivotSort.col] ?? 0;
+    if (typeof av === 'string') return pivotSort.dir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
+    return pivotSort.dir === 'asc' ? av - bv : bv - av;
+  });
+
+  const colHeaders = [groupField,'Ad Spend','Leads','Appts Booked','Appts Show Up','Starts','Booked %','Show Up %','Start %','CP-Lead','CP-Booked','CP-Show Up','CP-Start'];
+
+  let html = '<table class="pivot-table"><thead><tr>';
+  colHeaders.forEach((label, i) => {
+    const col = colKeys[i];
+    const sortClass = pivotSort.col === col ? (pivotSort.dir === 'asc' ? 'sort-asc' : 'sort-desc') : '';
+    html += `<th class="${sortClass}" onclick="setPivotSort('${col}')">${label}</th>`;
+  });
+  html += '</tr></thead><tbody>';
+
+  sorted.forEach(([key, g]) => {
+    const bookedPct = g.leads ? (g.booked / g.leads * 100).toLocaleString('en-US',{maximumFractionDigits:0}) + '%' : '—';
+    const showPct = g.booked ? (g.showUp / g.booked * 100).toLocaleString('en-US',{maximumFractionDigits:0}) + '%' : '—';
+    const startPct = g.showUp ? (g.startedTx / g.showUp * 100).toLocaleString('en-US',{maximumFractionDigits:0}) + '%' : '—';
+    const cpLead = g.leads ? '$' + (g.adSpend / g.leads).toLocaleString('en-US',{maximumFractionDigits:0}) : '—';
+    const cpBooked = g.booked ? '$' + (g.adSpend / g.booked).toLocaleString('en-US',{maximumFractionDigits:0}) : '—';
+    const cpCust = g.newCust ? '$' + (g.adSpend / g.newCust).toLocaleString('en-US',{maximumFractionDigits:0}) : '—';
+
+    html += `<tr><td><strong>${key}</strong></td>
+      <td class="num">$${g.adSpend.toLocaleString()}</td>
+      <td class="num">${g.leads.toLocaleString()}</td>
+      <td class="num">${g.booked.toLocaleString()}</td>
+      <td class="num">${g.showUp.toLocaleString()}</td>
+      <td class="num">${g.startedTx.toLocaleString()}</td>
+      <td class="num pct">${bookedPct}</td>
+      <td class="num pct">${showPct}</td>
+      <td class="num pct">${startPct}</td>
+      <td class="num cost">${cpLead}</td>
+      <td class="num cost">${cpBooked}</td>
+      <td class="num cost">${g.showUp ? '$' + (g.adSpend / g.showUp).toLocaleString('en-US',{maximumFractionDigits:0}) : '—'}</td>
+      <td class="num cost">${g.startedTx ? '$' + (g.adSpend / g.startedTx).toLocaleString('en-US',{maximumFractionDigits:0}) : '—'}</td></tr>`;
+  });
+
+  // Grand total
+  const gtBookedPct = totalLeads ? (totalBooked / totalLeads * 100).toLocaleString('en-US',{maximumFractionDigits:0}) + '%' : '—';
+  const totalShow = data.reduce((s,r)=>s+(r['Appointments Show Up']||0),0);
+  const gtShowPct = totalBooked ? (totalShow / totalBooked * 100).toLocaleString('en-US',{maximumFractionDigits:0}) + '%' : '—';
+  const gtStartPct = totalShow ? (totalTx / totalShow * 100).toLocaleString('en-US',{maximumFractionDigits:0}) + '%' : '—';
+
+  html += `<tr class="grand-total"><td><strong>Grand Total</strong></td>
+    <td class="num">$${totalSpend.toLocaleString()}</td>
+    <td class="num">${totalLeads.toLocaleString()}</td>
+    <td class="num">${totalBooked.toLocaleString()}</td>
+    <td class="num">${totalShow.toLocaleString()}</td>
+    <td class="num">${totalTx.toLocaleString()}</td>
+    <td class="num pct">${gtBookedPct}</td>
+    <td class="num pct">${gtShowPct}</td>
+    <td class="num pct">${gtStartPct}</td>
+    <td class="num cost">$${totalLeads ? (totalSpend/totalLeads).toLocaleString('en-US',{maximumFractionDigits:0}) : '—'}</td>
+    <td class="num cost">$${totalBooked ? (totalSpend/totalBooked).toLocaleString('en-US',{maximumFractionDigits:0}) : '—'}</td>
+    <td class="num cost">$${totalShow ? (totalSpend/totalShow).toLocaleString('en-US',{maximumFractionDigits:0}) : '—'}</td>
+    <td class="num cost">$${totalTx ? (totalSpend/totalTx).toLocaleString('en-US',{maximumFractionDigits:0}) : '—'}</td></tr>`;
+
+  html += '</tbody></table>';
+  document.getElementById('pivotTableWrap').innerHTML = html;
+}
+
+// ---- ACCOUNTS TAB ----
+function renderAccounts() {
+  const accounts = {};
+  rawData.forEach(r => {
+    const name = r['Account Name'];
+    if (!name) return;
+    if (!accounts[name]) accounts[name] = { location: '', urban: '', townSize: '', months: new Set(), sources: new Set(), totalSpend: 0, totalLeads: 0, totalNewCust: 0 };
+    if (r['Location']) accounts[name].location = r['Location'];
+    if (r['Urban / Suburban']) accounts[name].urban = r['Urban / Suburban'];
+    if (r['Town Size']) accounts[name].townSize = r['Town Size'];
+    if (r['Month']) accounts[name].months.add(r['Month']);
+    if (r['Cited Source']) accounts[name].sources.add(r['Cited Source']);
+    accounts[name].totalSpend += r['Ad Spend'] || 0;
+    accounts[name].totalLeads += r['Leads'] || 0;
+    accounts[name].totalNewCust += r['New Customer'] || 0;
+  });
+
+  let html = '<table><thead><tr><th>Account Name</th><th>Location</th><th>Setting</th><th>Town Size</th><th>Months Active</th><th>Sources</th><th>Total Ad Spend</th><th>Total Leads</th><th>Total New Customers</th><th>CPL</th></tr></thead><tbody>';
+  Object.entries(accounts).sort((a,b) => a[0].localeCompare(b[0])).forEach(([name, a]) => {
+    const badge = a.urban === 'Urban' ? 'badge-urban' : a.urban === 'Suburban' ? 'badge-suburban' : '';
+    const cpl = a.totalLeads ? '$' + (a.totalSpend / a.totalLeads).toLocaleString('en-US',{maximumFractionDigits:0}) : '—';
+    html += `<tr>
+      <td><strong>${name}</strong></td>
+      <td>${a.location}</td>
+      <td><span class="badge ${badge}">${a.urban || '—'}</span></td>
+      <td>${a.townSize || '—'}</td>
+      <td>${[...a.months].join(', ')}</td>
+      <td>${[...a.sources].filter(s=>s!=='Programmatic Ad').join(', ')}</td>
+      <td class="num">$${a.totalSpend.toLocaleString()}</td>
+      <td class="num">${a.totalLeads.toLocaleString()}</td>
+      <td class="num">${a.totalNewCust.toLocaleString()}</td>
+      <td class="num">${cpl}</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  document.getElementById('accountsTableWrap').innerHTML = html;
+}
+
+function openAccountModal() { document.getElementById('accountModal').classList.add('open'); }
+
+function saveAccount() {
+  const name = document.getElementById('aName').value.trim();
+  if (!name) { alert('Enter account name'); return; }
+  const exists = rawData.some(r => r['Account Name'] === name);
+  if (exists) { alert('Account already exists in data.'); closeModal('accountModal'); return; }
+  // Add a placeholder row
+  rawData.push({
+    'Month': '', 'Account Name': name, 'Ad Spend': null, 'Services Fees': null,
+    'Call Center Services': null, 'SEO Services': null,
+    'Location': document.getElementById('aLocation').value,
+    'Urban / Suburban': document.getElementById('aUrban').value,
+    'Town Size': document.getElementById('aTownSize').value,
+    'Cited Source': '', 'Leads': null, 'Contact Responded': null,
+    'Appointments Booked': null, 'Appointments Show Up': null, 'New Customer': null, 'Started Treatment': null
+  });
+  closeModal('accountModal');
+  populateFilters();
+  renderAccounts();
+  showToast('Account added — add records in Raw Data tab');
+}
+
+// ---- IMPORT / EXPORT ----
+document.getElementById('fileInput').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const wb = XLSX.read(e.target.result, { type: 'array' });
+    const ws = wb.Sheets['Raw Data'] || wb.Sheets[wb.SheetNames[0]];
+    const json = XLSX.utils.sheet_to_json(ws, { defval: null });
+    // Normalize field names
+    rawData = json.filter(r => r['Months'] || r['Month'] || r['Account Name']).map(r => {
+      const row = {};
+      row['Month'] = r['Months'] || r['Month'] || '';
+      row['Account Name'] = r['Account Name'] || '';
+      row['Ad Spend'] = parseNum(r['Ad Spend']);
+      row['Services Fees'] = parseNum(r['Services Fees']);
+      row['Call Center Services'] = parseNum(r['Call Center Services']);
+      row['SEO Services'] = parseNum(r['SEO Services']);
+      row['Location'] = r['Location'] || '';
+      row['Urban / Suburban'] = r['Urban / Suburban'] || '';
+      row['Town Size'] = r['Town Size'] || '';
+      row['Cited Source'] = r['Cited Source'] || '';
+      row['Leads'] = parseNum(r['Leads (all pipeline leads)'] ?? r['Leads']);
+      row['Contact Responded'] = parseNum(r['Contact Responded']);
+      row['Appointments Booked'] = parseNum(r['Appointments Booked']);
+      row['Appointments Show Up'] = parseNum(r['Appointments Show up'] ?? r['Appointments Show Up']);
+      row['New Customer'] = parseNum(r['New Customer']);
+      row['Started Treatment'] = parseNum(r['Started Treatment']);
+      return row;
+    });
+    // Remove the "Total" row if present
+    rawData = rawData.filter(r => r['Month'] !== 'Total' && r['Account Name'] !== 'Total');
+    populateFilters();
+    renderRawTable();
+    renderPivot();
+    renderAccounts();
+    showToast(`Imported ${rawData.length} records from ${file.name}`);
+  };
+  reader.readAsArrayBuffer(file);
+  this.value = '';
+});
+
+function parseNum(v) {
+  if (v === null || v === undefined || v === '' || v === '-' || v === 'NaN') return null;
+  const n = Number(v);
+  return isNaN(n) ? null : n;
+}
+
+function exportToExcel() {
+  const wb = XLSX.utils.book_new();
+
+  // Raw Data sheet
+  const rawHeaders = ['Months','Account Name','Ad Spend','Services Fees','Call Center Services','SEO Services','Location','Urban / Suburban','Town Size','Cited Source','Leads (all pipeline leads)','Contact Responded','Appointments Booked','Appointments Show up','New Customer','Started Treatment'];
+  const rawRows = rawData.map(r => [
+    r['Month'], r['Account Name'], r['Ad Spend'], r['Services Fees'], r['Call Center Services'], r['SEO Services'],
+    r['Location'], r['Urban / Suburban'], r['Town Size'], r['Cited Source'],
+    r['Leads'], r['Contact Responded'], r['Appointments Booked'], r['Appointments Show Up'],
+    r['New Customer'], r['Started Treatment']
+  ]);
+  const wsRaw = XLSX.utils.aoa_to_sheet([rawHeaders, ...rawRows]);
+  // Set column widths
+  wsRaw['!cols'] = rawHeaders.map(h => ({ wch: Math.max(h.length + 2, 14) }));
+  XLSX.utils.book_append_sheet(wb, wsRaw, 'Raw Data');
+
+  // Pivot sheet
+  const pivotHeaders = ['Account','Ad Spend','Leads','Appointments Booked','Appointments Show Up','New Customer','Started Treatment','Appt Booked %','Appt Show Up %','New Customer %','Started Treatment %','CP-Lead','CP-Booked Appointments','CP-Appt Show Up','CP-New Customer','CP-Treatment Started'];
+  const accounts = {};
+  rawData.forEach(r => {
+    const name = r['Account Name'];
+    if (!name) return;
+    if (!accounts[name]) accounts[name] = { adSpend:0, leads:0, booked:0, showUp:0, newCust:0, startedTx:0 };
+    accounts[name].adSpend += r['Ad Spend'] || 0;
+    accounts[name].leads += r['Leads'] || 0;
+    accounts[name].booked += r['Appointments Booked'] || 0;
+    accounts[name].showUp += r['Appointments Show Up'] || 0;
+    accounts[name].newCust += r['New Customer'] || 0;
+    accounts[name].startedTx += r['Started Treatment'] || 0;
+  });
+  const pivotRows = Object.entries(accounts).map(([name, g]) => [
+    name, g.adSpend, g.leads, g.booked, g.showUp, g.newCust, g.startedTx,
+    g.leads ? g.booked/g.leads : null,
+    g.booked ? g.showUp/g.booked : null,
+    g.showUp ? g.newCust/g.showUp : null,
+    g.newCust ? g.startedTx/g.newCust : null,
+    g.leads ? g.adSpend/g.leads : null,
+    g.booked ? g.adSpend/g.booked : null,
+    g.showUp ? g.adSpend/g.showUp : null,
+    g.newCust ? g.adSpend/g.newCust : null,
+    g.startedTx ? g.adSpend/g.startedTx : null,
+  ]);
+  const wsPivot = XLSX.utils.aoa_to_sheet([pivotHeaders, ...pivotRows]);
+  wsPivot['!cols'] = pivotHeaders.map(h => ({ wch: Math.max(h.length + 2, 14) }));
+  XLSX.utils.book_append_sheet(wb, wsPivot, 'Pivot');
+
+  // Notes sheet
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([]), 'Notes');
+
+  XLSX.writeFile(wb, 'Ortho Data.xlsx');
+  showToast('Exported to Ortho Data.xlsx');
+}
+
+// ---- UTILS ----
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// Close modals on overlay click
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.classList.remove('open'); });
+});
+
+// ---- INITIAL DATA (pre-loaded from Excel) ----
+const INITIAL_DATA = [{"Month": "March", "Account Name": "Hanson Place Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Brooklyn NY", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Referrals", "Leads": 4.0, "Contact Responded": null, "Appointments Booked": 1.0, "Appointments Show Up": null, "New Customer": 0.0, "Started Treatment": 3.0}, {"Month": "March", "Account Name": "Hanson Place Orthodontics", "Ad Spend": 2250.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Brooklyn NY", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Google", "Leads": 45.0, "Contact Responded": null, "Appointments Booked": 7.0, "Appointments Show Up": 1.0, "New Customer": 4.0, "Started Treatment": 22.0}, {"Month": "March", "Account Name": "Hanson Place Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Brooklyn NY", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Organic", "Leads": 40.0, "Contact Responded": null, "Appointments Booked": 13.0, "Appointments Show Up": 7.0, "New Customer": 3.0, "Started Treatment": 17.0}, {"Month": "March", "Account Name": "Hanson Place Orthodontics", "Ad Spend": 750.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Brooklyn NY", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Programmatic Ad", "Leads": null, "Contact Responded": null, "Appointments Booked": null, "Appointments Show Up": null, "New Customer": null, "Started Treatment": null}, {"Month": "February", "Account Name": "Hanson Place Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Brooklyn NY", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Referrals", "Leads": 1.0, "Contact Responded": null, "Appointments Booked": 1.0, "Appointments Show Up": 0.0, "New Customer": 0.0, "Started Treatment": 0.0}, {"Month": "February", "Account Name": "Hanson Place Orthodontics", "Ad Spend": 2250.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Brooklyn NY", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Google", "Leads": 10.0, "Contact Responded": null, "Appointments Booked": 3.0, "Appointments Show Up": 1.0, "New Customer": 3.0, "Started Treatment": 1.0}, {"Month": "February", "Account Name": "Hanson Place Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Brooklyn NY", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Organic", "Leads": 23.0, "Contact Responded": null, "Appointments Booked": 6.0, "Appointments Show Up": 8.0, "New Customer": 7.0, "Started Treatment": 2.0}, {"Month": "February", "Account Name": "Hanson Place Orthodontics", "Ad Spend": 750.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Brooklyn NY", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Programmatic Ad", "Leads": null, "Contact Responded": null, "Appointments Booked": null, "Appointments Show Up": null, "New Customer": null, "Started Treatment": null}, {"Month": "January", "Account Name": "Hanson Place Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Brooklyn NY", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Referrals", "Leads": 2.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 1.0, "New Customer": 1.0, "Started Treatment": 0.0}, {"Month": "January", "Account Name": "Hanson Place Orthodontics", "Ad Spend": 2250.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Brooklyn NY", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Google", "Leads": 14.0, "Contact Responded": null, "Appointments Booked": 3.0, "Appointments Show Up": 5.0, "New Customer": 6.0, "Started Treatment": 0.0}, {"Month": "January", "Account Name": "Hanson Place Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Brooklyn NY", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Organic", "Leads": 12.0, "Contact Responded": null, "Appointments Booked": 5.0, "Appointments Show Up": 0.0, "New Customer": 5.0, "Started Treatment": 2.0}, {"Month": "January", "Account Name": "Hanson Place Orthodontics", "Ad Spend": 750.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Brooklyn NY", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Programmatic Ad", "Leads": null, "Contact Responded": null, "Appointments Booked": null, "Appointments Show Up": null, "New Customer": null, "Started Treatment": null}, {"Month": "March", "Account Name": "ARK Esthetics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Brooklyn NY", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Referrals", "Leads": 0.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 0.0, "New Customer": 0.0, "Started Treatment": 0.0}, {"Month": "March", "Account Name": "ARK Esthetics", "Ad Spend": 1800.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Brooklyn NY", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Google", "Leads": 16.0, "Contact Responded": null, "Appointments Booked": 7.0, "Appointments Show Up": 0.0, "New Customer": 13.0, "Started Treatment": 0.0}, {"Month": "March", "Account Name": "ARK Esthetics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Brooklyn NY", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Organic", "Leads": 29.0, "Contact Responded": null, "Appointments Booked": 15.0, "Appointments Show Up": 0.0, "New Customer": 14.0, "Started Treatment": 0.0}, {"Month": "March", "Account Name": "ARK Esthetics", "Ad Spend": 700.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Brooklyn NY", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Programmatic Ad", "Leads": null, "Contact Responded": null, "Appointments Booked": null, "Appointments Show Up": null, "New Customer": null, "Started Treatment": null}, {"Month": "February", "Account Name": "ARK Esthetics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Brooklyn NY", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Referrals", "Leads": 1.0, "Contact Responded": null, "Appointments Booked": 1.0, "Appointments Show Up": 0.0, "New Customer": 0.0, "Started Treatment": 0.0}, {"Month": "February", "Account Name": "ARK Esthetics", "Ad Spend": 1800.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Brooklyn NY", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Google", "Leads": 42.0, "Contact Responded": null, "Appointments Booked": 11.0, "Appointments Show Up": 0.0, "New Customer": 29.0, "Started Treatment": 0.0}, {"Month": "February", "Account Name": "ARK Esthetics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Brooklyn NY", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Organic", "Leads": 51.0, "Contact Responded": null, "Appointments Booked": 11.0, "Appointments Show Up": 0.0, "New Customer": 37.0, "Started Treatment": 0.0}, {"Month": "February", "Account Name": "ARK Esthetics", "Ad Spend": 700.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Brooklyn NY", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Programmatic Ad", "Leads": null, "Contact Responded": null, "Appointments Booked": null, "Appointments Show Up": null, "New Customer": null, "Started Treatment": null}, {"Month": "January", "Account Name": "ARK Esthetics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Brooklyn NY", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Referrals", "Leads": 0.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 0.0, "New Customer": 0.0, "Started Treatment": 0.0}, {"Month": "January", "Account Name": "ARK Esthetics", "Ad Spend": 1800.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Brooklyn NY", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Google", "Leads": 18.0, "Contact Responded": null, "Appointments Booked": 7.0, "Appointments Show Up": 0.0, "New Customer": 11.0, "Started Treatment": 0.0}, {"Month": "January", "Account Name": "ARK Esthetics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Brooklyn NY", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Organic", "Leads": 29.0, "Contact Responded": null, "Appointments Booked": 15.0, "Appointments Show Up": 0.0, "New Customer": 14.0, "Started Treatment": 0.0}, {"Month": "January", "Account Name": "ARK Esthetics", "Ad Spend": 700.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Brooklyn NY", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Programmatic Ad", "Leads": null, "Contact Responded": null, "Appointments Booked": null, "Appointments Show Up": null, "New Customer": null, "Started Treatment": null}, {"Month": "March", "Account Name": "Dr E Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Nanuet NY", "Urban / Suburban": "Suburban", "Town Size": "Small to mid-sized", "Cited Source": "Referrals", "Leads": null, "Contact Responded": null, "Appointments Booked": null, "Appointments Show Up": null, "New Customer": null, "Started Treatment": null}, {"Month": "March", "Account Name": "Dr E Orthodontics", "Ad Spend": 500.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Nanuet NY", "Urban / Suburban": "Suburban", "Town Size": "Small to mid-sized", "Cited Source": "Meta", "Leads": 21.0, "Contact Responded": null, "Appointments Booked": 4.0, "Appointments Show Up": 1.0, "New Customer": 15.0, "Started Treatment": 1.0}, {"Month": "March", "Account Name": "Dr E Orthodontics", "Ad Spend": 2200.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Nanuet NY", "Urban / Suburban": "Suburban", "Town Size": "Small to mid-sized", "Cited Source": "Google", "Leads": 5.0, "Contact Responded": null, "Appointments Booked": null, "Appointments Show Up": null, "New Customer": 2.0, "Started Treatment": 3.0}, {"Month": "March", "Account Name": "Dr E Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Nanuet NY", "Urban / Suburban": "Suburban", "Town Size": "Small to mid-sized", "Cited Source": "Organic", "Leads": null, "Contact Responded": null, "Appointments Booked": null, "Appointments Show Up": null, "New Customer": null, "Started Treatment": null}, {"Month": "March", "Account Name": "Dr E Orthodontics", "Ad Spend": 300.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Nanuet NY", "Urban / Suburban": "Suburban", "Town Size": "Small to mid-sized", "Cited Source": "Programmatic Ad", "Leads": null, "Contact Responded": null, "Appointments Booked": null, "Appointments Show Up": null, "New Customer": null, "Started Treatment": null}, {"Month": "February", "Account Name": "Dr E Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Nanuet NY", "Urban / Suburban": "Suburban", "Town Size": "Small to mid-sized", "Cited Source": "Referrals", "Leads": 0.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 0.0, "New Customer": 0.0, "Started Treatment": 0.0}, {"Month": "February", "Account Name": "Dr E Orthodontics", "Ad Spend": 500.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Nanuet NY", "Urban / Suburban": "Suburban", "Town Size": "Small to mid-sized", "Cited Source": "Meta", "Leads": 21.0, "Contact Responded": null, "Appointments Booked": 1.0, "Appointments Show Up": 4.0, "New Customer": 13.0, "Started Treatment": 2.0}, {"Month": "February", "Account Name": "Dr E Orthodontics", "Ad Spend": 2200.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Nanuet NY", "Urban / Suburban": "Suburban", "Town Size": "Small to mid-sized", "Cited Source": "Google", "Leads": 14.0, "Contact Responded": null, "Appointments Booked": 2.0, "Appointments Show Up": 1.0, "New Customer": 3.0, "Started Treatment": 4.0}, {"Month": "February", "Account Name": "Dr E Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Nanuet NY", "Urban / Suburban": "Suburban", "Town Size": "Small to mid-sized", "Cited Source": "Organic", "Leads": 0.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 0.0, "New Customer": 0.0, "Started Treatment": 0.0}, {"Month": "February", "Account Name": "Dr E Orthodontics", "Ad Spend": 300.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Nanuet NY", "Urban / Suburban": "Suburban", "Town Size": "Small to mid-sized", "Cited Source": "Programmatic Ad", "Leads": null, "Contact Responded": null, "Appointments Booked": null, "Appointments Show Up": null, "New Customer": null, "Started Treatment": null}, {"Month": "January", "Account Name": "Dr E Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Nanuet NY", "Urban / Suburban": "Suburban", "Town Size": "Small to mid-sized", "Cited Source": "Referrals", "Leads": 3.0, "Contact Responded": null, "Appointments Booked": 1.0, "Appointments Show Up": 1.0, "New Customer": 0.0, "Started Treatment": 0.0}, {"Month": "January", "Account Name": "Dr E Orthodontics", "Ad Spend": 500.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Nanuet NY", "Urban / Suburban": "Suburban", "Town Size": "Small to mid-sized", "Cited Source": "Meta", "Leads": 6.0, "Contact Responded": null, "Appointments Booked": 1.0, "Appointments Show Up": 0.0, "New Customer": 2.0, "Started Treatment": 1.0}, {"Month": "January", "Account Name": "Dr E Orthodontics", "Ad Spend": 2200.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Nanuet NY", "Urban / Suburban": "Suburban", "Town Size": "Small to mid-sized", "Cited Source": "Google", "Leads": 6.0, "Contact Responded": null, "Appointments Booked": 1.0, "Appointments Show Up": 0.0, "New Customer": 2.0, "Started Treatment": 1.0}, {"Month": "January", "Account Name": "Dr E Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Nanuet NY", "Urban / Suburban": "Suburban", "Town Size": "Small to mid-sized", "Cited Source": "Organic", "Leads": 0.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 0.0, "New Customer": 0.0, "Started Treatment": 0.0}, {"Month": "January", "Account Name": "Dr E Orthodontics", "Ad Spend": 300.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Nanuet NY", "Urban / Suburban": "Suburban", "Town Size": "Small to mid-sized", "Cited Source": "Programmatic Ad", "Leads": null, "Contact Responded": null, "Appointments Booked": null, "Appointments Show Up": null, "New Customer": null, "Started Treatment": null}, {"Month": "March", "Account Name": "Smile Solutions Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Millburn, NJ", "Urban / Suburban": "Suburban", "Town Size": "Small to mid-sized", "Cited Source": "Referrals", "Leads": 13.0, "Contact Responded": null, "Appointments Booked": 4.0, "Appointments Show Up": 4.0, "New Customer": 0.0, "Started Treatment": 4.0}, {"Month": "March", "Account Name": "Smile Solutions Orthodontics", "Ad Spend": 750.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Millburn, NJ", "Urban / Suburban": "Suburban", "Town Size": "Small to mid-sized", "Cited Source": "Meta", "Leads": 9.0, "Contact Responded": null, "Appointments Booked": 1.0, "Appointments Show Up": 1.0, "New Customer": 4.0, "Started Treatment": 3.0}, {"Month": "March", "Account Name": "Smile Solutions Orthodontics", "Ad Spend": 2250.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Millburn, NJ", "Urban / Suburban": "Suburban", "Town Size": "Small to mid-sized", "Cited Source": "Google", "Leads": 23.0, "Contact Responded": null, "Appointments Booked": 3.0, "Appointments Show Up": 4.0, "New Customer": 11.0, "Started Treatment": 2.0}, {"Month": "March", "Account Name": "Smile Solutions Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Millburn, NJ", "Urban / Suburban": "Suburban", "Town Size": "Small to mid-sized", "Cited Source": "Organic", "Leads": 5.0, "Contact Responded": null, "Appointments Booked": 1.0, "Appointments Show Up": 3.0, "New Customer": 1.0, "Started Treatment": 0.0}, {"Month": "March", "Account Name": "Smile Solutions Orthodontics", "Ad Spend": 1000.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Millburn, NJ", "Urban / Suburban": "Suburban", "Town Size": "Small to mid-sized", "Cited Source": "Programmatic Ad", "Leads": null, "Contact Responded": null, "Appointments Booked": null, "Appointments Show Up": null, "New Customer": null, "Started Treatment": null}, {"Month": "February", "Account Name": "Smile Solutions Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Millburn, NJ", "Urban / Suburban": "Suburban", "Town Size": "Small to mid-sized", "Cited Source": "Referrals", "Leads": 21.0, "Contact Responded": null, "Appointments Booked": 1.0, "Appointments Show Up": 13.0, "New Customer": 0.0, "Started Treatment": 6.0}, {"Month": "February", "Account Name": "Smile Solutions Orthodontics", "Ad Spend": 750.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Millburn, NJ", "Urban / Suburban": "Suburban", "Town Size": "Small to mid-sized", "Cited Source": "Meta", "Leads": 14.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 4.0, "New Customer": 1.0, "Started Treatment": 1.0}, {"Month": "February", "Account Name": "Smile Solutions Orthodontics", "Ad Spend": 2250.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Millburn, NJ", "Urban / Suburban": "Suburban", "Town Size": "Small to mid-sized", "Cited Source": "Google", "Leads": 27.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 16.0, "New Customer": 5.0, "Started Treatment": 1.0}, {"Month": "February", "Account Name": "Smile Solutions Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Millburn, NJ", "Urban / Suburban": "Suburban", "Town Size": "Small to mid-sized", "Cited Source": "Organic", "Leads": 10.0, "Contact Responded": null, "Appointments Booked": 1.0, "Appointments Show Up": 4.0, "New Customer": 0.0, "Started Treatment": 4.0}, {"Month": "February", "Account Name": "Smile Solutions Orthodontics", "Ad Spend": 1000.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Millburn, NJ", "Urban / Suburban": "Suburban", "Town Size": "Small to mid-sized", "Cited Source": "Programmatic Ad", "Leads": null, "Contact Responded": null, "Appointments Booked": null, "Appointments Show Up": null, "New Customer": null, "Started Treatment": null}, {"Month": "January", "Account Name": "Smile Solutions Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Millburn, NJ", "Urban / Suburban": "Suburban", "Town Size": "Small to mid-sized", "Cited Source": "Referrals", "Leads": 0.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 0.0, "New Customer": 0.0, "Started Treatment": 0.0}, {"Month": "January", "Account Name": "Smile Solutions Orthodontics", "Ad Spend": 750.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Millburn, NJ", "Urban / Suburban": "Suburban", "Town Size": "Small to mid-sized", "Cited Source": "Meta", "Leads": 18.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 0.0, "New Customer": 0.0, "Started Treatment": 0.0}, {"Month": "January", "Account Name": "Smile Solutions Orthodontics", "Ad Spend": 2250.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Millburn, NJ", "Urban / Suburban": "Suburban", "Town Size": "Small to mid-sized", "Cited Source": "Google", "Leads": 23.0, "Contact Responded": null, "Appointments Booked": 1.0, "Appointments Show Up": 0.0, "New Customer": 4.0, "Started Treatment": 1.0}, {"Month": "January", "Account Name": "Smile Solutions Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Millburn, NJ", "Urban / Suburban": "Suburban", "Town Size": "Small to mid-sized", "Cited Source": "Organic", "Leads": 2.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 1.0, "New Customer": 0.0, "Started Treatment": 0.0}, {"Month": "January", "Account Name": "Smile Solutions Orthodontics", "Ad Spend": 1000.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Millburn, NJ", "Urban / Suburban": "Suburban", "Town Size": "Small to mid-sized", "Cited Source": "Programmatic Ad", "Leads": null, "Contact Responded": null, "Appointments Booked": null, "Appointments Show Up": null, "New Customer": null, "Started Treatment": null}, {"Month": "March", "Account Name": "Sterling Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Sterling Heights, Michigan", "Urban / Suburban": "Suburban", "Town Size": "Large", "Cited Source": "Referrals", "Leads": 1.0, "Contact Responded": null, "Appointments Booked": 1.0, "Appointments Show Up": 0.0, "New Customer": 0.0, "Started Treatment": 0.0}, {"Month": "March", "Account Name": "Sterling Orthodontics", "Ad Spend": 1000.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Sterling Heights, Michigan", "Urban / Suburban": "Suburban", "Town Size": "Large", "Cited Source": "Meta", "Leads": 4.0, "Contact Responded": null, "Appointments Booked": 2.0, "Appointments Show Up": 0.0, "New Customer": 2.0, "Started Treatment": 0.0}, {"Month": "March", "Account Name": "Sterling Orthodontics", "Ad Spend": 2000.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Sterling Heights, Michigan", "Urban / Suburban": "Suburban", "Town Size": "Large", "Cited Source": "Google", "Leads": 31.0, "Contact Responded": null, "Appointments Booked": 11.0, "Appointments Show Up": 0.0, "New Customer": 19.0, "Started Treatment": 1.0}, {"Month": "March", "Account Name": "Sterling Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Sterling Heights, Michigan", "Urban / Suburban": "Suburban", "Town Size": "Large", "Cited Source": "Organic", "Leads": 14.0, "Contact Responded": null, "Appointments Booked": 6.0, "Appointments Show Up": 0.0, "New Customer": 4.0, "Started Treatment": 4.0}, {"Month": "March", "Account Name": "Sterling Orthodontics", "Ad Spend": 500.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Sterling Heights, Michigan", "Urban / Suburban": "Suburban", "Town Size": "Large", "Cited Source": "Programmatic Ad", "Leads": null, "Contact Responded": null, "Appointments Booked": null, "Appointments Show Up": null, "New Customer": null, "Started Treatment": null}, {"Month": "February", "Account Name": "Sterling Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Sterling Heights, Michigan", "Urban / Suburban": "Suburban", "Town Size": "Large", "Cited Source": "Referrals", "Leads": 2.0, "Contact Responded": null, "Appointments Booked": 2.0, "Appointments Show Up": 0.0, "New Customer": 1.0, "Started Treatment": 0.0}, {"Month": "February", "Account Name": "Sterling Orthodontics", "Ad Spend": 1000.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Sterling Heights, Michigan", "Urban / Suburban": "Suburban", "Town Size": "Large", "Cited Source": "Meta", "Leads": 0.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 0.0, "New Customer": 0.0, "Started Treatment": 0.0}, {"Month": "February", "Account Name": "Sterling Orthodontics", "Ad Spend": 2000.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Sterling Heights, Michigan", "Urban / Suburban": "Suburban", "Town Size": "Large", "Cited Source": "Google", "Leads": 33.0, "Contact Responded": null, "Appointments Booked": 10.0, "Appointments Show Up": 1.0, "New Customer": 13.0, "Started Treatment": 0.0}, {"Month": "February", "Account Name": "Sterling Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Sterling Heights, Michigan", "Urban / Suburban": "Suburban", "Town Size": "Large", "Cited Source": "Organic", "Leads": 12.0, "Contact Responded": null, "Appointments Booked": 6.0, "Appointments Show Up": 0.0, "New Customer": 6.0, "Started Treatment": 0.0}, {"Month": "February", "Account Name": "Sterling Orthodontics", "Ad Spend": 500.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Sterling Heights, Michigan", "Urban / Suburban": "Suburban", "Town Size": "Large", "Cited Source": "Programmatic Ad", "Leads": null, "Contact Responded": null, "Appointments Booked": null, "Appointments Show Up": null, "New Customer": null, "Started Treatment": null}, {"Month": "January", "Account Name": "Sterling Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Sterling Heights, Michigan", "Urban / Suburban": "Suburban", "Town Size": "Large", "Cited Source": "Referrals", "Leads": 2.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 2.0, "New Customer": 0.0, "Started Treatment": 0.0}, {"Month": "January", "Account Name": "Sterling Orthodontics", "Ad Spend": 1000.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Sterling Heights, Michigan", "Urban / Suburban": "Suburban", "Town Size": "Large", "Cited Source": "Meta", "Leads": 0.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 0.0, "New Customer": 0.0, "Started Treatment": 0.0}, {"Month": "January", "Account Name": "Sterling Orthodontics", "Ad Spend": 2000.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Sterling Heights, Michigan", "Urban / Suburban": "Suburban", "Town Size": "Large", "Cited Source": "Google", "Leads": 25.0, "Contact Responded": null, "Appointments Booked": 5.0, "Appointments Show Up": 6.0, "New Customer": 6.0, "Started Treatment": 0.0}, {"Month": "January", "Account Name": "Sterling Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Sterling Heights, Michigan", "Urban / Suburban": "Suburban", "Town Size": "Large", "Cited Source": "Organic", "Leads": 6.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 1.0, "New Customer": 3.0, "Started Treatment": 0.0}, {"Month": "January", "Account Name": "Sterling Orthodontics", "Ad Spend": 500.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Sterling Heights, Michigan", "Urban / Suburban": "Suburban", "Town Size": "Large", "Cited Source": "Programmatic Ad", "Leads": null, "Contact Responded": null, "Appointments Booked": null, "Appointments Show Up": null, "New Customer": null, "Started Treatment": null}, {"Month": "March", "Account Name": "Super Kiddos", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Woodland Hills, CA", "Urban / Suburban": "Suburban", "Town Size": "Large", "Cited Source": "Referrals", "Leads": 4.0, "Contact Responded": null, "Appointments Booked": 1.0, "Appointments Show Up": 0.0, "New Customer": 2.0, "Started Treatment": 1.0}, {"Month": "March", "Account Name": "Super Kiddos", "Ad Spend": 1000.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Woodland Hills, CA", "Urban / Suburban": "Suburban", "Town Size": "Large", "Cited Source": "Meta", "Leads": 10.0, "Contact Responded": null, "Appointments Booked": 1.0, "Appointments Show Up": 0.0, "New Customer": 7.0, "Started Treatment": 2.0}, {"Month": "March", "Account Name": "Super Kiddos", "Ad Spend": 1000.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Woodland Hills, CA", "Urban / Suburban": "Suburban", "Town Size": "Large", "Cited Source": "Google", "Leads": 17.0, "Contact Responded": null, "Appointments Booked": 1.0, "Appointments Show Up": 0.0, "New Customer": 14.0, "Started Treatment": 2.0}, {"Month": "March", "Account Name": "Super Kiddos", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Woodland Hills, CA", "Urban / Suburban": "Suburban", "Town Size": "Large", "Cited Source": "Organic", "Leads": 4.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 0.0, "New Customer": 4.0, "Started Treatment": 0.0}, {"Month": "February", "Account Name": "Super Kiddos", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Woodland Hills, CA", "Urban / Suburban": "Suburban", "Town Size": "Large", "Cited Source": "Referrals", "Leads": 2.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 0.0, "New Customer": 1.0, "Started Treatment": 1.0}, {"Month": "February", "Account Name": "Super Kiddos", "Ad Spend": 1000.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Woodland Hills, CA", "Urban / Suburban": "Suburban", "Town Size": "Large", "Cited Source": "Meta", "Leads": 9.0, "Contact Responded": null, "Appointments Booked": 1.0, "Appointments Show Up": 0.0, "New Customer": 8.0, "Started Treatment": 0.0}, {"Month": "February", "Account Name": "Super Kiddos", "Ad Spend": 1000.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Woodland Hills, CA", "Urban / Suburban": "Suburban", "Town Size": "Large", "Cited Source": "Google", "Leads": 2.0, "Contact Responded": null, "Appointments Booked": 2.0, "Appointments Show Up": 0.0, "New Customer": 2.0, "Started Treatment": 0.0}, {"Month": "February", "Account Name": "Super Kiddos", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Woodland Hills, CA", "Urban / Suburban": "Suburban", "Town Size": "Large", "Cited Source": "Organic", "Leads": 5.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 0.0, "New Customer": 3.0, "Started Treatment": 0.0}, {"Month": "January", "Account Name": "Super Kiddos", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Woodland Hills, CA", "Urban / Suburban": "Suburban", "Town Size": "Large", "Cited Source": "Referrals", "Leads": 3.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 0.0, "New Customer": 1.0, "Started Treatment": 2.0}, {"Month": "January", "Account Name": "Super Kiddos", "Ad Spend": 1000.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Woodland Hills, CA", "Urban / Suburban": "Suburban", "Town Size": "Large", "Cited Source": "Meta", "Leads": 10.0, "Contact Responded": null, "Appointments Booked": 1.0, "Appointments Show Up": 0.0, "New Customer": 3.0, "Started Treatment": 0.0}, {"Month": "January", "Account Name": "Super Kiddos", "Ad Spend": 1000.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Woodland Hills, CA", "Urban / Suburban": "Suburban", "Town Size": "Large", "Cited Source": "Google", "Leads": 5.0, "Contact Responded": null, "Appointments Booked": 1.0, "Appointments Show Up": 0.0, "New Customer": 0.0, "Started Treatment": 1.0}, {"Month": "January", "Account Name": "Super Kiddos", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Woodland Hills, CA", "Urban / Suburban": "Suburban", "Town Size": "Large", "Cited Source": "Organic", "Leads": 4.0, "Contact Responded": null, "Appointments Booked": 3.0, "Appointments Show Up": 0.0, "New Customer": 0.0, "Started Treatment": 0.0}, {"Month": "March", "Account Name": "Wow Smiles Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "Referrals", "Leads": 1.0, "Contact Responded": null, "Appointments Booked": 1.0, "Appointments Show Up": 0.0, "New Customer": 0.0, "Started Treatment": 0.0}, {"Month": "March", "Account Name": "Wow Smiles Orthodontics", "Ad Spend": 9000.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "Meta", "Leads": 48.0, "Contact Responded": null, "Appointments Booked": 9.0, "Appointments Show Up": 1.0, "New Customer": 28.0, "Started Treatment": 7.0}, {"Month": "March", "Account Name": "Wow Smiles Orthodontics", "Ad Spend": 19800.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "Google", "Leads": 120.0, "Contact Responded": null, "Appointments Booked": 11.0, "Appointments Show Up": 5.0, "New Customer": 93.0, "Started Treatment": 11.0}, {"Month": "March", "Account Name": "Wow Smiles Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "LPF Monterey", "Leads": 0.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 0.0, "New Customer": 0.0, "Started Treatment": 0.0}, {"Month": "March", "Account Name": "Wow Smiles Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "LPF - Napa", "Leads": 1.0, "Contact Responded": null, "Appointments Booked": 1.0, "Appointments Show Up": 0.0, "New Customer": 0.0, "Started Treatment": 0.0}, {"Month": "March", "Account Name": "Wow Smiles Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "LPF Pittsburg", "Leads": 10.0, "Contact Responded": null, "Appointments Booked": 7.0, "Appointments Show Up": 0.0, "New Customer": 2.0, "Started Treatment": 1.0}, {"Month": "March", "Account Name": "Wow Smiles Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "LPF Salinas", "Leads": 9.0, "Contact Responded": null, "Appointments Booked": 2.0, "Appointments Show Up": 1.0, "New Customer": 6.0, "Started Treatment": 0.0}, {"Month": "March", "Account Name": "Wow Smiles Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "LPF Santa Rosa", "Leads": 3.0, "Contact Responded": null, "Appointments Booked": 1.0, "Appointments Show Up": 0.0, "New Customer": 1.0, "Started Treatment": 0.0}, {"Month": "March", "Account Name": "Wow Smiles Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "LPF Soledad", "Leads": 0.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 0.0, "New Customer": 0.0, "Started Treatment": 0.0}, {"Month": "March", "Account Name": "Wow Smiles Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "LPF Spanish", "Leads": 4.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 0.0, "New Customer": 4.0, "Started Treatment": 0.0}, {"Month": "March", "Account Name": "Wow Smiles Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "LPF Ukiah", "Leads": 11.0, "Contact Responded": null, "Appointments Booked": 4.0, "Appointments Show Up": 0.0, "New Customer": 3.0, "Started Treatment": 0.0}, {"Month": "March", "Account Name": "Wow Smiles Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "LPF Vallejo", "Leads": 0.0, "Contact Responded": null, "Appointments Booked": 4.0, "Appointments Show Up": 0.0, "New Customer": 4.0, "Started Treatment": 0.0}, {"Month": "March", "Account Name": "Wow Smiles Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "LPF Watsonville", "Leads": 0.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 0.0, "New Customer": 9.0, "Started Treatment": 0.0}, {"Month": "March", "Account Name": "Wow Smiles Orthodontics", "Ad Spend": 1800.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "Programmatic Ad", "Leads": null, "Contact Responded": null, "Appointments Booked": null, "Appointments Show Up": null, "New Customer": null, "Started Treatment": null}, {"Month": "February", "Account Name": "Wow Smiles Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "Referrals", "Leads": 4.0, "Contact Responded": null, "Appointments Booked": 4.0, "Appointments Show Up": 0.0, "New Customer": 0.0, "Started Treatment": 0.0}, {"Month": "February", "Account Name": "Wow Smiles Orthodontics", "Ad Spend": 9000.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "Meta", "Leads": 59.0, "Contact Responded": null, "Appointments Booked": 7.0, "Appointments Show Up": 2.0, "New Customer": 16.0, "Started Treatment": 23.0}, {"Month": "February", "Account Name": "Wow Smiles Orthodontics", "Ad Spend": 19800.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "Google", "Leads": 130.0, "Contact Responded": null, "Appointments Booked": 10.0, "Appointments Show Up": 5.0, "New Customer": 86.0, "Started Treatment": 16.0}, {"Month": "February", "Account Name": "Wow Smiles Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "LPF Monterey", "Leads": 2.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 1.0, "New Customer": 0.0, "Started Treatment": 1.0}, {"Month": "February", "Account Name": "Wow Smiles Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "LPF - Napa", "Leads": 1.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 0.0, "New Customer": 0.0, "Started Treatment": 1.0}, {"Month": "February", "Account Name": "Wow Smiles Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "LPF Pittsburg", "Leads": 14.0, "Contact Responded": null, "Appointments Booked": 4.0, "Appointments Show Up": 1.0, "New Customer": 5.0, "Started Treatment": 4.0}, {"Month": "February", "Account Name": "Wow Smiles Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "LPF Salinas", "Leads": 19.0, "Contact Responded": null, "Appointments Booked": 6.0, "Appointments Show Up": 0.0, "New Customer": 5.0, "Started Treatment": 3.0}, {"Month": "February", "Account Name": "Wow Smiles Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "LPF Santa Rosa", "Leads": 2.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 1.0, "New Customer": 0.0, "Started Treatment": 1.0}, {"Month": "February", "Account Name": "Wow Smiles Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "LPF Soledad", "Leads": 2.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 0.0, "New Customer": 0.0, "Started Treatment": 2.0}, {"Month": "February", "Account Name": "Wow Smiles Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "LPF Spanish", "Leads": 0.0, "Contact Responded": null, "Appointments Booked": 1.0, "Appointments Show Up": 0.0, "New Customer": 2.0, "Started Treatment": 0.0}, {"Month": "February", "Account Name": "Wow Smiles Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "LPF Ukiah", "Leads": 0.0, "Contact Responded": null, "Appointments Booked": 4.0, "Appointments Show Up": 0.0, "New Customer": 7.0, "Started Treatment": 9.0}, {"Month": "February", "Account Name": "Wow Smiles Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "LPF Vallejo", "Leads": 0.0, "Contact Responded": null, "Appointments Booked": 4.0, "Appointments Show Up": 0.0, "New Customer": 6.0, "Started Treatment": 0.0}, {"Month": "February", "Account Name": "Wow Smiles Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "LPF Watsonville", "Leads": 0.0, "Contact Responded": null, "Appointments Booked": 3.0, "Appointments Show Up": 0.0, "New Customer": 3.0, "Started Treatment": 0.0}, {"Month": "February", "Account Name": "Wow Smiles Orthodontics", "Ad Spend": 1800.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "Programmatic Ad", "Leads": null, "Contact Responded": null, "Appointments Booked": null, "Appointments Show Up": null, "New Customer": null, "Started Treatment": null}, {"Month": "January", "Account Name": "Wow Smiles Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "Referrals", "Leads": 3.0, "Contact Responded": null, "Appointments Booked": 2.0, "Appointments Show Up": 0.0, "New Customer": 0.0, "Started Treatment": 0.0}, {"Month": "January", "Account Name": "Wow Smiles Orthodontics", "Ad Spend": 9000.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "Meta", "Leads": 90.0, "Contact Responded": null, "Appointments Booked": 17.0, "Appointments Show Up": 4.0, "New Customer": 31.0, "Started Treatment": 0.0}, {"Month": "January", "Account Name": "Wow Smiles Orthodontics", "Ad Spend": 19800.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "Google", "Leads": 152.0, "Contact Responded": null, "Appointments Booked": 22.0, "Appointments Show Up": 3.0, "New Customer": 97.0, "Started Treatment": 0.0}, {"Month": "January", "Account Name": "Wow Smiles Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "LPF Monterey", "Leads": 4.0, "Contact Responded": null, "Appointments Booked": 1.0, "Appointments Show Up": 0.0, "New Customer": 2.0, "Started Treatment": 0.0}, {"Month": "January", "Account Name": "Wow Smiles Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "LPF - Napa", "Leads": 0.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 0.0, "New Customer": 0.0, "Started Treatment": 0.0}, {"Month": "January", "Account Name": "Wow Smiles Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "LPF Pittsburg", "Leads": 8.0, "Contact Responded": null, "Appointments Booked": 3.0, "Appointments Show Up": 0.0, "New Customer": 0.0, "Started Treatment": 0.0}, {"Month": "January", "Account Name": "Wow Smiles Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "LPF Salinas", "Leads": 10.0, "Contact Responded": null, "Appointments Booked": 2.0, "Appointments Show Up": 0.0, "New Customer": 3.0, "Started Treatment": 0.0}, {"Month": "January", "Account Name": "Wow Smiles Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "LPF Santa Rosa", "Leads": 3.0, "Contact Responded": null, "Appointments Booked": 1.0, "Appointments Show Up": 1.0, "New Customer": 1.0, "Started Treatment": 0.0}, {"Month": "January", "Account Name": "Wow Smiles Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "LPF Soledad", "Leads": 4.0, "Contact Responded": null, "Appointments Booked": 2.0, "Appointments Show Up": 1.0, "New Customer": 0.0, "Started Treatment": 0.0}, {"Month": "January", "Account Name": "Wow Smiles Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "LPF Spanish", "Leads": 0.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 0.0, "New Customer": 0.0, "Started Treatment": 0.0}, {"Month": "January", "Account Name": "Wow Smiles Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "LPF Ukiah", "Leads": 8.0, "Contact Responded": null, "Appointments Booked": 2.0, "Appointments Show Up": 0.0, "New Customer": 4.0, "Started Treatment": 0.0}, {"Month": "January", "Account Name": "Wow Smiles Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "LPF Vallejo", "Leads": 0.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 0.0, "New Customer": 4.0, "Started Treatment": 0.0}, {"Month": "January", "Account Name": "Wow Smiles Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "LPF Watsonville", "Leads": 0.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 0.0, "New Customer": 2.0, "Started Treatment": 0.0}, {"Month": "January", "Account Name": "Wow Smiles Orthodontics", "Ad Spend": 1800.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "Programmatic Ad", "Leads": null, "Contact Responded": null, "Appointments Booked": null, "Appointments Show Up": null, "New Customer": null, "Started Treatment": null}, {"Month": "March", "Account Name": "Bernstein Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "Referrals", "Leads": 0.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 0.0, "New Customer": 0.0, "Started Treatment": 0.0}, {"Month": "March", "Account Name": "Bernstein Orthodontics", "Ad Spend": 2000.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "Meta", "Leads": 22.0, "Contact Responded": null, "Appointments Booked": 4.0, "Appointments Show Up": 1.0, "New Customer": 15.0, "Started Treatment": 2.0}, {"Month": "March", "Account Name": "Bernstein Orthodontics", "Ad Spend": 3200.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "Google", "Leads": 12.0, "Contact Responded": null, "Appointments Booked": 3.0, "Appointments Show Up": 0.0, "New Customer": 8.0, "Started Treatment": 0.0}, {"Month": "March", "Account Name": "Bernstein Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "LPF (Windsor & Santa Rosa)", "Leads": 11.0, "Contact Responded": null, "Appointments Booked": 3.0, "Appointments Show Up": 2.0, "New Customer": 5.0, "Started Treatment": 1.0}, {"Month": "March", "Account Name": "Bernstein Orthodontics", "Ad Spend": 400.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "Programmatic Ad", "Leads": null, "Contact Responded": null, "Appointments Booked": null, "Appointments Show Up": null, "New Customer": null, "Started Treatment": null}, {"Month": "February", "Account Name": "Bernstein Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "Referrals", "Leads": 0.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 0.0, "New Customer": 0.0, "Started Treatment": 0.0}, {"Month": "February", "Account Name": "Bernstein Orthodontics", "Ad Spend": 2000.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "Meta", "Leads": 4.0, "Contact Responded": null, "Appointments Booked": 3.0, "Appointments Show Up": 0.0, "New Customer": 1.0, "Started Treatment": 0.0}, {"Month": "February", "Account Name": "Bernstein Orthodontics", "Ad Spend": 3200.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "Google", "Leads": 22.0, "Contact Responded": null, "Appointments Booked": 7.0, "Appointments Show Up": 0.0, "New Customer": 13.0, "Started Treatment": 1.0}, {"Month": "February", "Account Name": "Bernstein Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "LPF (Windsor & Santa Rosa)", "Leads": 10.0, "Contact Responded": null, "Appointments Booked": 5.0, "Appointments Show Up": 0.0, "New Customer": 2.0, "Started Treatment": 1.0}, {"Month": "February", "Account Name": "Bernstein Orthodontics", "Ad Spend": 400.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "Programmatic Ad", "Leads": null, "Contact Responded": null, "Appointments Booked": null, "Appointments Show Up": null, "New Customer": null, "Started Treatment": null}, {"Month": "January", "Account Name": "Bernstein Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "Referrals", "Leads": 2.0, "Contact Responded": null, "Appointments Booked": 1.0, "Appointments Show Up": 0.0, "New Customer": 0.0, "Started Treatment": 0.0}, {"Month": "January", "Account Name": "Bernstein Orthodontics", "Ad Spend": 2000.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "Meta", "Leads": 11.0, "Contact Responded": null, "Appointments Booked": 3.0, "Appointments Show Up": 1.0, "New Customer": 1.0, "Started Treatment": 1.0}, {"Month": "January", "Account Name": "Bernstein Orthodontics", "Ad Spend": 3200.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "Google", "Leads": 28.0, "Contact Responded": null, "Appointments Booked": 10.0, "Appointments Show Up": 9.0, "New Customer": 6.0, "Started Treatment": 0.0}, {"Month": "January", "Account Name": "Bernstein Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "LPF (Windsor & Santa Rosa)", "Leads": 20.0, "Contact Responded": null, "Appointments Booked": 7.0, "Appointments Show Up": 5.0, "New Customer": 3.0, "Started Treatment": 1.0}, {"Month": "January", "Account Name": "Bernstein Orthodontics", "Ad Spend": 400.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "SantaRosa, CA", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "Programmatic Ad", "Leads": null, "Contact Responded": null, "Appointments Booked": null, "Appointments Show Up": null, "New Customer": null, "Started Treatment": null}, {"Month": "March", "Account Name": "Carroll Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Columbia, SC", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Referrals", "Leads": 0.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 0.0, "New Customer": 0.0, "Started Treatment": 0.0}, {"Month": "March", "Account Name": "Carroll Orthodontics", "Ad Spend": 1500.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Columbia, SC", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Google", "Leads": 4.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 0.0, "New Customer": 4.0, "Started Treatment": 0.0}, {"Month": "March", "Account Name": "Carroll Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Columbia, SC", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Organic", "Leads": 13.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 0.0, "New Customer": 13.0, "Started Treatment": 0.0}, {"Month": "March", "Account Name": "Carroll Orthodontics", "Ad Spend": 500.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Columbia, SC", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Programmatic Ad", "Leads": null, "Contact Responded": null, "Appointments Booked": null, "Appointments Show Up": null, "New Customer": null, "Started Treatment": null}, {"Month": "February", "Account Name": "Carroll Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Columbia, SC", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Referrals", "Leads": null, "Contact Responded": null, "Appointments Booked": null, "Appointments Show Up": null, "New Customer": null, "Started Treatment": null}, {"Month": "February", "Account Name": "Carroll Orthodontics", "Ad Spend": 1500.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Columbia, SC", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Google", "Leads": null, "Contact Responded": null, "Appointments Booked": null, "Appointments Show Up": null, "New Customer": null, "Started Treatment": null}, {"Month": "February", "Account Name": "Carroll Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Columbia, SC", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Organic", "Leads": null, "Contact Responded": null, "Appointments Booked": null, "Appointments Show Up": null, "New Customer": null, "Started Treatment": null}, {"Month": "February", "Account Name": "Carroll Orthodontics", "Ad Spend": 500.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Columbia, SC", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Programmatic Ad", "Leads": null, "Contact Responded": null, "Appointments Booked": null, "Appointments Show Up": null, "New Customer": null, "Started Treatment": null}, {"Month": "January", "Account Name": "Carroll Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Columbia, SC", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Referrals", "Leads": null, "Contact Responded": null, "Appointments Booked": null, "Appointments Show Up": null, "New Customer": null, "Started Treatment": null}, {"Month": "January", "Account Name": "Carroll Orthodontics", "Ad Spend": 1500.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Columbia, SC", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Google", "Leads": null, "Contact Responded": null, "Appointments Booked": null, "Appointments Show Up": null, "New Customer": null, "Started Treatment": null}, {"Month": "January", "Account Name": "Carroll Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Columbia, SC", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Organic", "Leads": null, "Contact Responded": null, "Appointments Booked": null, "Appointments Show Up": null, "New Customer": null, "Started Treatment": null}, {"Month": "January", "Account Name": "Carroll Orthodontics", "Ad Spend": 500.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Columbia, SC", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Programmatic Ad", "Leads": null, "Contact Responded": null, "Appointments Booked": null, "Appointments Show Up": null, "New Customer": null, "Started Treatment": null}, {"Month": "March", "Account Name": "Crown Dental Care", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Rockville, Maryland", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "Referrals", "Leads": 3.0, "Contact Responded": null, "Appointments Booked": 1.0, "Appointments Show Up": 0.0, "New Customer": 0.0, "Started Treatment": 2.0}, {"Month": "March", "Account Name": "Crown Dental Care", "Ad Spend": 4000.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Rockville, Maryland", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "Google", "Leads": 73.0, "Contact Responded": null, "Appointments Booked": 33.0, "Appointments Show Up": 1.0, "New Customer": 30.0, "Started Treatment": 7.0}, {"Month": "March", "Account Name": "Crown Dental Care", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Rockville, Maryland", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "Organic", "Leads": 43.0, "Contact Responded": null, "Appointments Booked": 12.0, "Appointments Show Up": 0.0, "New Customer": 15.0, "Started Treatment": 16.0}, {"Month": "February", "Account Name": "Crown Dental Care", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Rockville, Maryland", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "Referrals", "Leads": 2.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 0.0, "New Customer": 1.0, "Started Treatment": 0.0}, {"Month": "February", "Account Name": "Crown Dental Care", "Ad Spend": 4000.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Rockville, Maryland", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "Google", "Leads": 86.0, "Contact Responded": null, "Appointments Booked": 15.0, "Appointments Show Up": 5.0, "New Customer": 54.0, "Started Treatment": 0.0}, {"Month": "February", "Account Name": "Crown Dental Care", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Rockville, Maryland", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "Organic", "Leads": 20.0, "Contact Responded": null, "Appointments Booked": 3.0, "Appointments Show Up": 1.0, "New Customer": 14.0, "Started Treatment": 1.0}, {"Month": "January", "Account Name": "Crown Dental Care", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Rockville, Maryland", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "Referrals", "Leads": 1.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 0.0, "New Customer": 1.0, "Started Treatment": 0.0}, {"Month": "January", "Account Name": "Crown Dental Care", "Ad Spend": 4000.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Rockville, Maryland", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "Google", "Leads": 51.0, "Contact Responded": null, "Appointments Booked": 7.0, "Appointments Show Up": 3.0, "New Customer": 25.0, "Started Treatment": 0.0}, {"Month": "January", "Account Name": "Crown Dental Care", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Rockville, Maryland", "Urban / Suburban": "Suburban", "Town Size": "Big", "Cited Source": "Organic", "Leads": 19.0, "Contact Responded": null, "Appointments Booked": 4.0, "Appointments Show Up": 2.0, "New Customer": 8.0, "Started Treatment": 0.0}, {"Month": "March", "Account Name": "G-orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Perland, Tx", "Urban / Suburban": "Suburban", "Town Size": "Large", "Cited Source": "Referrals", "Leads": 0.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 0.0, "New Customer": 0.0, "Started Treatment": 0.0}, {"Month": "March", "Account Name": "G-orthodontics", "Ad Spend": 4000.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Perland, Tx", "Urban / Suburban": "Suburban", "Town Size": "Large", "Cited Source": "Google", "Leads": 11.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 0.0, "New Customer": 11.0, "Started Treatment": 0.0}, {"Month": "March", "Account Name": "G-orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Perland, Tx", "Urban / Suburban": "Suburban", "Town Size": "Large", "Cited Source": "Organic", "Leads": 4.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 0.0, "New Customer": 4.0, "Started Treatment": 0.0}, {"Month": "February", "Account Name": "G-orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Perland, Tx", "Urban / Suburban": "Suburban", "Town Size": "Large", "Cited Source": "Referrals", "Leads": 0.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 0.0, "New Customer": 0.0, "Started Treatment": 0.0}, {"Month": "February", "Account Name": "G-orthodontics", "Ad Spend": 4000.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Perland, Tx", "Urban / Suburban": "Suburban", "Town Size": "Large", "Cited Source": "Google", "Leads": 26.0, "Contact Responded": null, "Appointments Booked": 5.0, "Appointments Show Up": 2.0, "New Customer": 10.0, "Started Treatment": 2.0}, {"Month": "February", "Account Name": "G-orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Perland, Tx", "Urban / Suburban": "Suburban", "Town Size": "Large", "Cited Source": "Organic", "Leads": 3.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 0.0, "New Customer": 2.0, "Started Treatment": 0.0}, {"Month": "January", "Account Name": "G-orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Perland, Tx", "Urban / Suburban": "Suburban", "Town Size": "Large", "Cited Source": "Referrals", "Leads": null, "Contact Responded": null, "Appointments Booked": null, "Appointments Show Up": null, "New Customer": null, "Started Treatment": null}, {"Month": "January", "Account Name": "G-orthodontics", "Ad Spend": 4000.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Perland, Tx", "Urban / Suburban": "Suburban", "Town Size": "Large", "Cited Source": "Google", "Leads": null, "Contact Responded": null, "Appointments Booked": null, "Appointments Show Up": null, "New Customer": null, "Started Treatment": null}, {"Month": "January", "Account Name": "G-orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "Perland, Tx", "Urban / Suburban": "Suburban", "Town Size": "Large", "Cited Source": "Organic", "Leads": null, "Contact Responded": null, "Appointments Booked": null, "Appointments Show Up": null, "New Customer": null, "Started Treatment": null}, {"Month": "March", "Account Name": "Goodman Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "NewYork", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Referrals", "Leads": 0.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 0.0, "New Customer": 0.0, "Started Treatment": 0.0}, {"Month": "March", "Account Name": "Goodman Orthodontics", "Ad Spend": 2000.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "NewYork", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Google", "Leads": 23.0, "Contact Responded": null, "Appointments Booked": 8.0, "Appointments Show Up": 0.0, "New Customer": 15.0, "Started Treatment": 0.0}, {"Month": "March", "Account Name": "Goodman Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "NewYork", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Organic", "Leads": 12.0, "Contact Responded": null, "Appointments Booked": 3.0, "Appointments Show Up": 2.0, "New Customer": 5.0, "Started Treatment": 2.0}, {"Month": "March", "Account Name": "Goodman Orthodontics", "Ad Spend": 500.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "NewYork", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Programmatic Ad", "Leads": null, "Contact Responded": null, "Appointments Booked": null, "Appointments Show Up": null, "New Customer": null, "Started Treatment": null}, {"Month": "February", "Account Name": "Goodman Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "NewYork", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Referrals", "Leads": 0.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 0.0, "New Customer": 0.0, "Started Treatment": 0.0}, {"Month": "February", "Account Name": "Goodman Orthodontics", "Ad Spend": 2000.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "NewYork", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Google", "Leads": 23.0, "Contact Responded": null, "Appointments Booked": 2.0, "Appointments Show Up": 1.0, "New Customer": 16.0, "Started Treatment": 0.0}, {"Month": "February", "Account Name": "Goodman Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "NewYork", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Organic", "Leads": 22.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 5.0, "New Customer": 12.0, "Started Treatment": 4.0}, {"Month": "February", "Account Name": "Goodman Orthodontics", "Ad Spend": 500.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "NewYork", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Programmatic Ad", "Leads": null, "Contact Responded": null, "Appointments Booked": null, "Appointments Show Up": null, "New Customer": null, "Started Treatment": null}, {"Month": "January", "Account Name": "Goodman Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "NewYork", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Referrals", "Leads": 0.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 0.0, "New Customer": 0.0, "Started Treatment": 0.0}, {"Month": "January", "Account Name": "Goodman Orthodontics", "Ad Spend": 2000.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "NewYork", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Google", "Leads": 42.0, "Contact Responded": null, "Appointments Booked": 7.0, "Appointments Show Up": 5.0, "New Customer": 22.0, "Started Treatment": 0.0}, {"Month": "January", "Account Name": "Goodman Orthodontics", "Ad Spend": null, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "NewYork", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Organic", "Leads": 16.0, "Contact Responded": null, "Appointments Booked": 0.0, "Appointments Show Up": 6.0, "New Customer": 5.0, "Started Treatment": 0.0}, {"Month": "January", "Account Name": "Goodman Orthodontics", "Ad Spend": 500.0, "Services Fees": null, "Call Center Services": null, "SEO Services": null, "Location": "NewYork", "Urban / Suburban": "Urban", "Town Size": "Large", "Cited Source": "Programmatic Ad", "Leads": null, "Contact Responded": null, "Appointments Booked": null, "Appointments Show Up": null, "New Customer": null, "Started Treatment": null}];
+
+initData();
+</script>
+</body>
+</html>
